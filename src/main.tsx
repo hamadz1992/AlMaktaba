@@ -76,7 +76,6 @@ function App() {
         <input type="password" value={login.password} onChange={e => setLogin({...login, password:e.target.value})} />
         {error && <div className="error">{error}</div>}
         <button className="primary">دخول</button>
-        <small>للاختبار الأولي: partner1 / 1234 — partner2 / 1234 — admin / 1234</small>
       </form>
     </div>;
   }
