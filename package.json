@@ -1,11 +1,11 @@
 {
   "name": "almaktaba",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "المكتبة - برنامج إدارة معاملات المحل Offline",
   "main": "dist-electron/electron/main.js",
   "scripts": {
-    "dev": "concurrently -k \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "dev": "tsc -p tsconfig.json && concurrently -k \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "build": "tsc -p tsconfig.json && vite build && electron-builder",
     "preview": "vite preview"
   },
