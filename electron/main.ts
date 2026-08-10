@@ -32,7 +32,10 @@ function audit(action: string, entityType: string, entityId: number | null, deta
 
 async function initDb() {
   const SQL = await initSqlJs({
-    locateFile: (file: string) => path.join(process.resourcesPath, "node_modules", "sql.js", "dist", file)
+    locateFile: (file: string) => {
+      if (app.isPackaged) return path.join(process.resourcesPath, "node_modules", "sql.js", "dist", file);
+      return path.join(process.cwd(), "node_modules", "sql.js", "dist", file);
+    }
   });
   dbPath = path.join(app.getPath("userData"), "almaktaba.sqlite");
   db = fs.existsSync(dbPath) ? new SQL.Database(fs.readFileSync(dbPath)) : new SQL.Database();
