@@ -100,8 +100,6 @@ function visibleTransactions() {
   if (session.role === "admin") {
     return query(`SELECT t.*, u.display_name AS created_by_name FROM transactions t JOIN users u ON u.id=t.created_by WHERE t.visibility='shop' OR (t.visibility='admin_private' AND t.created_by=?) ORDER BY t.id DESC`, [session.id]);
   }
-  // كل عملية أنشأها الحساب السري تبقى سرية، حتى لو كانت قيمة visibility القديمة هي shop.
-  // هذا يحمي أيضًا العمليات القديمة التي أُنشئت قبل تطبيق قاعدة السرية.
   return query(`SELECT t.*, u.display_name AS created_by_name FROM transactions t JOIN users u ON u.id=t.created_by WHERE t.visibility='shop' AND u.role != 'admin' ORDER BY t.id DESC`);
 }
 
@@ -137,7 +135,6 @@ ipcMain.handle("transactions:create", (_event, input) => {
   if (!type || !reason || !Number.isFinite(amount) || amount <= 0) return { ok: false, error: "نوع العملية والمبلغ والتبرير حقول إجبارية" };
   const beneficiary = String(input?.beneficiary || "").trim();
   const notes = String(input?.notes || "").trim();
-  // أي عملية يسجلها الحساب السري خاصة به تلقائيًا ولا يمكن جعلها ظاهرة للشريكين.
   const visibility = session.role === "admin" ? "admin_private" : "shop";
   const now = new Date().toISOString();
   db.run("INSERT INTO transactions(type,amount,reason,beneficiary,notes,visibility,created_by,created_at) VALUES(?,?,?,?,?,?,?,?)", [type, amount, reason, beneficiary, notes, visibility, session.id, now]);
@@ -180,7 +177,7 @@ ipcMain.handle("transactions:void", (_event, { id, reason }) => {
 });
 
 ipcMain.handle("system:backup", async () => {
-  if (!session || session.role !== "admin") return { ok: false, error: "النسخ الاحتياطي متاح للحساب 3 فقط" };
+  if (!session || session.role !== "admin") return { ok: false, error: "هذه العملية غير متاحة" };
   const result = await dialog.showSaveDialog({ title: "حفظ نسخة احتياطية", defaultPath: `almaktaba-${new Date().toISOString().slice(0, 10)}.sqlite`, filters: [{ name: "SQLite", extensions: ["sqlite"] }] });
   if (result.canceled || !result.filePath) return { ok: false };
   fs.copyFileSync(dbPath, result.filePath);
@@ -190,10 +187,10 @@ ipcMain.handle("system:backup", async () => {
 function createWindow() {
   Menu.setApplicationMenu(null);
   const win = new BrowserWindow({
-    width: 1440,
-    height: 900,
-    minWidth: 1050,
-    minHeight: 700,
+    width: 1150,
+    height: 720,
+    minWidth: 900,
+    minHeight: 620,
     title: "المكتبة",
     autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false }
