@@ -4,16 +4,19 @@ import "./styles.css";
 
 type User = { id: number; username: string; displayName: string; role: "partner1" | "partner2" | "admin" };
 type Tx = { id:number; type:string; amount:number; reason:string; beneficiary:string; notes:string; visibility:string; created_by:number; created_by_name:string; created_at:string; updated_at:string|null; status:string };
+type Section = "home" | "transactions" | "new" | "reports" | "account";
 
 const types = ["شراء", "بيع", "مصروف", "سحب", "إيداع", "دين", "تسديد دين", "أخرى"];
 const SAVED_USERNAME_KEY = "almaktaba_saved_username";
 
+function formatMoney(value: number) {
+  return `${Number(value || 0).toLocaleString("ar-DZ")} دج`;
+}
+
 function App() {
   const [user, setUser] = useState<User | null>(null);
-  const [login, setLogin] = useState(() => ({
-    username: localStorage.getItem(SAVED_USERNAME_KEY) || "",
-    password: ""
-  }));
+  const [section, setSection] = useState<Section>("home");
+  const [login, setLogin] = useState(() => ({ username: localStorage.getItem(SAVED_USERNAME_KEY) || "", password: "" }));
   const [error, setError] = useState("");
   const [txs, setTxs] = useState<Tx[]>([]);
   const [form, setForm] = useState({ type: "شراء", amount: "", reason: "", beneficiary: "", notes: "", visibility: "shop" });
@@ -30,16 +33,10 @@ function App() {
     e.preventDefault(); setError("");
     const r = await window.almaktaba.login(login.username, login.password);
     if (!r.ok) return setError(r.error);
-
-    // حفظ اسم المستخدم فقط. الحساب السري لا يُحفظ حتى لا ينكشف وجوده.
-    if (r.user.role === "admin") {
-      localStorage.removeItem(SAVED_USERNAME_KEY);
-    } else {
-      localStorage.setItem(SAVED_USERNAME_KEY, r.user.username);
-    }
-
+    if (r.user.role === "admin") localStorage.removeItem(SAVED_USERNAME_KEY);
+    else localStorage.setItem(SAVED_USERNAME_KEY, r.user.username);
     setLogin({ username: r.user.role === "admin" ? "" : r.user.username, password: "" });
-    setUser(r.user);
+    setUser(r.user); setSection("home");
   }
 
   async function submit(e: React.FormEvent) {
@@ -48,13 +45,15 @@ function App() {
     if (!r.ok) return setError(r.error);
     setEditing(null);
     setForm({ type:"شراء", amount:"", reason:"", beneficiary:"", notes:"", visibility:"shop" });
-    await refresh();
+    await refresh(); setSection("transactions");
   }
 
   function startEdit(t: Tx) {
     setEditing(t.id);
     setForm({ type:t.type, amount:String(t.amount), reason:t.reason, beneficiary:t.beneficiary || "", notes:t.notes || "", visibility:t.visibility });
+    setSection("new");
   }
+
   async function cancelTx(t: Tx) {
     const reason = window.prompt("سبب الإلغاء:");
     if (reason === null) return;
@@ -62,6 +61,7 @@ function App() {
     if (!r.ok) return window.alert(r.error);
     refresh();
   }
+
   async function changePassword(e: React.FormEvent) {
     e.preventDefault();
     const r = await window.almaktaba.changeOwnPassword(passwords.old, passwords.next);
@@ -76,92 +76,100 @@ function App() {
       (filter.creator === "الكل" || t.created_by_name === filter.creator) &&
       (!q || `${t.reason} ${t.beneficiary} ${t.notes} ${t.amount}`.toLowerCase().includes(q));
   }), [txs, filter]);
-  const activeTotal = filtered.filter(t => t.status === "active").reduce((sum, t) => sum + Number(t.amount), 0);
+
+  const active = txs.filter(t => t.status === "active");
+  const purchases = active.filter(t => t.type === "شراء").reduce((s,t) => s + Number(t.amount), 0);
+  const withdrawals = active.filter(t => t.type === "سحب").reduce((s,t) => s + Number(t.amount), 0);
+  const expenses = active.filter(t => ["مصروف", "شراء"].includes(t.type)).reduce((s,t) => s + Number(t.amount), 0);
+  const deposits = active.filter(t => t.type === "إيداع").reduce((s,t) => s + Number(t.amount), 0);
+  const net = deposits - expenses + active.filter(t => t.type === "بيع").reduce((s,t) => s + Number(t.amount), 0) - withdrawals;
 
   if (!user) {
-    return <div className="login-page">
-      <form className="login-card" onSubmit={doLogin}>
-        <div className="logo">المكتبة</div>
-        <div className="subtitle">إدارة معاملات المحل — بدون إنترنت</div>
-        <label>اسم المستخدم</label>
-        <input value={login.username} onChange={e => setLogin({...login, username:e.target.value})} autoFocus />
-        <label>كلمة المرور</label>
-        <input type="password" value={login.password} onChange={e => setLogin({...login, password:e.target.value})} />
-        {error && <div className="error">{error}</div>}
-        <button className="primary">دخول</button>
-      </form>
-    </div>;
+    return <div className="login-page"><form className="login-card" onSubmit={doLogin}>
+      <div className="logo">المكتبة</div><div className="subtitle">إدارة معاملات المحل — بدون إنترنت</div>
+      <label>اسم المستخدم</label><input value={login.username} onChange={e => setLogin({...login, username:e.target.value})} autoFocus />
+      <label>كلمة المرور</label><input type="password" value={login.password} onChange={e => setLogin({...login, password:e.target.value})} />
+      {error && <div className="error">{error}</div>}<button className="primary">دخول</button>
+    </form></div>;
   }
+
+  const nav = [
+    ["home", "الرئيسية"], ["transactions", "المعاملات"], ["new", "تسجيل حركة"], ["reports", "التقارير"], ["account", "حسابي"]
+  ] as const;
 
   return <div className="app">
     <header className="topbar">
       <div><b className="title">المكتبة</b><span className="user"> — {user.role === "admin" ? "المستخدم" : user.displayName}</span></div>
       <div className="actions">
-        <button onClick={() => setShowPassword(true)}>تغيير كلمة المرور</button>
         {user.role === "admin" && <button onClick={async () => { const r = await window.almaktaba.backup(); if (r?.ok) window.alert("تم إنشاء النسخة الاحتياطية"); }}>نسخة احتياطية</button>}
+        <button onClick={() => setShowPassword(true)}>تغيير كلمة المرور</button>
         <button onClick={async () => { await window.almaktaba.logout(); setUser(null); }}>خروج</button>
       </div>
     </header>
 
-    {showPassword && <div className="modal"><form className="modal-card" onSubmit={changePassword}>
-      <h3>تغيير كلمة المرور</h3>
-      <input type="password" placeholder="كلمة المرور الحالية" value={passwords.old} onChange={e => setPasswords({...passwords, old:e.target.value})}/>
-      <input type="password" placeholder="كلمة المرور الجديدة" value={passwords.next} onChange={e => setPasswords({...passwords, next:e.target.value})}/>
-      <button className="primary">حفظ</button><button type="button" onClick={() => setShowPassword(false)}>إلغاء</button>
-    </form></div>}
+    <div className="layout">
+      <aside className="sidebar">
+        <div className="side-title">أقسام البرنامج</div>
+        <nav>{nav.map(([id, label]) => <button key={id} className={section === id ? "active" : ""} onClick={() => { setSection(id); setEditing(null); }}>{label}</button>)}</nav>
+      </aside>
 
-    <main className="content">
-      <section className="stats">
-        <div><span>الحركات المعروضة</span><strong>{filtered.length}</strong></div>
-        <div><span>إجمالي القيم النشطة</span><strong>{activeTotal.toLocaleString("ar-DZ")} دج</strong></div>
-        <div><span>الصلاحيات</span><strong>{user.role === "admin" ? "كاملة" : "حساب شخصي"}</strong></div>
-      </section>
+      <main className="content">
+        {section === "home" && <>
+          <div className="page-heading"><h1>الرئيسية</h1><p>ملخص سريع لحركة المحل.</p></div>
+          <section className="stats">
+            <div><span>عدد العمليات</span><strong>{active.length}</strong></div>
+            <div><span>المشتريات</span><strong>{formatMoney(purchases)}</strong></div>
+            <div><span>السحوبات</span><strong>{formatMoney(withdrawals)}</strong></div>
+            <div><span>الرصيد الصافي</span><strong>{formatMoney(net)}</strong></div>
+          </section>
+          <section className="card home-card"><div className="card-head"><div><h2>آخر العمليات</h2><p className="muted">آخر الحركات المتاحة لهذا الحساب.</p></div><button onClick={() => setSection("transactions")}>عرض كل العمليات</button></div>
+            <TransactionTable rows={txs.slice(0,5)} user={user} onEdit={startEdit} onCancel={cancelTx} />
+          </section>
+        </>}
 
-      <div className="grid">
-        <section className="card">
-          <h2>{editing ? "تعديل الحركة" : "تسجيل حركة جديدة"}</h2>
-          <p className="muted">المبلغ والتبرير حقول إجبارية.</p>
+        {section === "transactions" && <section className="card full-card">
+          <div className="page-heading"><h1>المعاملات</h1><p>البحث والتصفية وعرض سجل العمليات المتاحة لهذا الحساب.</p></div>
+          <div className="filters"><input placeholder="بحث في التبرير أو الجهة أو المبلغ..." value={filter.search} onChange={e => setFilter({...filter,search:e.target.value})}/><select value={filter.type} onChange={e => setFilter({...filter,type:e.target.value})}><option>الكل</option>{types.map(t => <option key={t}>{t}</option>)}</select><select value={filter.creator} onChange={e => setFilter({...filter,creator:e.target.value})}><option>الكل</option>{Array.from(new Set(txs.map(t => t.created_by_name))).map(n => <option key={n}>{n}</option>)}</select></div>
+          <TransactionTable rows={filtered} user={user} onEdit={startEdit} onCancel={cancelTx} />
+        </section>}
+
+        {section === "new" && <section className="card form-card">
+          <div className="page-heading"><h1>{editing ? "تعديل حركة" : "تسجيل حركة جديدة"}</h1><p>كل عملية يجب أن تحتوي على مبلغ وتبرير واضح.</p></div>
           <form onSubmit={submit}>
-            <label>نوع العملية</label>
-            <select value={form.type} onChange={e => setForm({...form,type:e.target.value})}>{types.map(t => <option key={t}>{t}</option>)}</select>
-            <label>المبلغ (دج)</label>
-            <input type="number" min="0.01" step="0.01" value={form.amount} onChange={e => setForm({...form,amount:e.target.value})}/>
-            <label>التبرير / السبب</label>
-            <input value={form.reason} onChange={e => setForm({...form,reason:e.target.value})} placeholder="مثال: شراء منتجات للمحل"/>
-            <label>المستفيد / الجهة</label>
-            <input value={form.beneficiary} onChange={e => setForm({...form,beneficiary:e.target.value})} placeholder="مثال: المورد أو الشريك"/>
-            <label>ملاحظات</label>
-            <textarea value={form.notes} onChange={e => setForm({...form,notes:e.target.value})}/>
-            {user.role === "admin" && <>
-              <label>ظهور العملية</label>
-              <select value={form.visibility} onChange={e => setForm({...form,visibility:e.target.value})}>
-                <option value="shop">عملية المحل — تظهر للشريكين</option>
-                <option value="admin_private">عملية خاصة</option>
-              </select>
-            </>}
+            <label>نوع العملية</label><select value={form.type} onChange={e => setForm({...form,type:e.target.value})}>{types.map(t => <option key={t}>{t}</option>)}</select>
+            <label>المبلغ (دج)</label><input type="number" min="0.01" step="0.01" value={form.amount} onChange={e => setForm({...form,amount:e.target.value})}/>
+            <label>التبرير / السبب</label><input value={form.reason} onChange={e => setForm({...form,reason:e.target.value})} placeholder="مثال: شراء منتجات للمحل"/>
+            <label>المستفيد / الجهة</label><input value={form.beneficiary} onChange={e => setForm({...form,beneficiary:e.target.value})} placeholder="مثال: المورد أو الشريك"/>
+            <label>ملاحظات</label><textarea value={form.notes} onChange={e => setForm({...form,notes:e.target.value})}/>
+            {user.role === "admin" && <><label>ظهور العملية</label><select value={form.visibility} onChange={e => setForm({...form,visibility:e.target.value})}><option value="admin_private">عملية خاصة</option><option value="shop">عملية المحل — تظهر للشريكين</option></select></>}
             {error && <div className="error">{error}</div>}
-            <button className="primary">{editing ? "حفظ التعديل" : "تسجيل العملية"}</button>
-            {editing && <button type="button" onClick={() => { setEditing(null); setForm({type:"شراء",amount:"",reason:"",beneficiary:"",notes:"",visibility:"shop"}); }}>إلغاء التعديل</button>}
+            <div className="form-actions"><button className="primary">{editing ? "حفظ التعديل" : "تسجيل العملية"}</button>{editing && <button type="button" onClick={() => { setEditing(null); setSection("transactions"); }}>إلغاء التعديل</button>}</div>
           </form>
-        </section>
+        </section>}
 
-        <section className="card">
-          <div><h2>سجل الحركات</h2><p className="muted">السجل يعرض العمليات المتاحة لهذا الحساب.</p></div>
-          <div className="filters">
-            <input placeholder="بحث..." value={filter.search} onChange={e => setFilter({...filter,search:e.target.value})}/>
-            <select value={filter.type} onChange={e => setFilter({...filter,type:e.target.value})}><option>الكل</option>{types.map(t => <option key={t}>{t}</option>)}</select>
-            <select value={filter.creator} onChange={e => setFilter({...filter,creator:e.target.value})}><option>الكل</option>{Array.from(new Set(txs.map(t => t.created_by_name))).map(n => <option key={n}>{n}</option>)}</select>
-          </div>
-          <div className="table-wrap"><table><thead><tr><th>التاريخ</th><th>النوع</th><th>المبلغ</th><th>التبرير</th><th>المستفيد</th><th>المسجل</th><th>الحالة</th><th>إجراء</th></tr></thead><tbody>
-            {filtered.map(t => <tr key={t.id}>
-              <td>{new Date(t.created_at).toLocaleString("ar-DZ")}</td><td>{t.type}</td><td>{Number(t.amount).toLocaleString("ar-DZ")} دج</td><td>{t.reason}</td><td>{t.beneficiary || "—"}</td><td>{t.created_by_name}</td><td>{t.status === "active" ? "نشطة" : "ملغاة"}</td>
-              <td>{t.status === "active" && (user.role === "admin" || t.created_by === user.id) ? <><button onClick={() => startEdit(t)}>تعديل</button> <button onClick={() => cancelTx(t)}>إلغاء</button></> : "—"}</td>
-            </tr>)}
-          </tbody></table>{filtered.length === 0 && <div className="empty">لا توجد نتائج.</div>}</div>
-        </section>
-      </div>
-    </main>
+        {section === "reports" && <>
+          <div className="page-heading"><h1>التقارير</h1><p>ملخص مالي للعمليات المسجلة والمتاحة لهذا الحساب.</p></div>
+          <section className="stats reports-stats"><div><span>المشتريات</span><strong>{formatMoney(purchases)}</strong></div><div><span>المصاريف</span><strong>{formatMoney(expenses)}</strong></div><div><span>السحوبات</span><strong>{formatMoney(withdrawals)}</strong></div><div><span>الإيداعات</span><strong>{formatMoney(deposits)}</strong></div><div><span>عدد العمليات</span><strong>{active.length}</strong></div><div><span>الرصيد الصافي</span><strong>{formatMoney(net)}</strong></div></section>
+          <section className="card"><h2>توزيع العمليات</h2><div className="report-list">{types.map(type => { const count = active.filter(t => t.type === type).length; const total = active.filter(t => t.type === type).reduce((s,t) => s + Number(t.amount),0); return <div className="report-row" key={type}><span>{type}</span><b>{count} عملية</b><strong>{formatMoney(total)}</strong></div>; })}</div></section>
+        </>}
+
+        {section === "account" && <section className="card account-card">
+          <div className="page-heading"><h1>حسابي</h1><p>إعدادات الحساب الشخصي.</p></div>
+          <div className="account-info"><div><span>اسم المستخدم</span><strong>{user.role === "admin" ? "—" : user.username}</strong></div><div><span>الاسم الظاهر</span><strong>{user.role === "admin" ? "المستخدم" : user.displayName}</strong></div><div><span>الصلاحيات</span><strong>{user.role === "admin" ? "كاملة" : "حساب شخصي"}</strong></div></div>
+          <button className="primary compact" onClick={() => setShowPassword(true)}>تغيير كلمة المرور</button>
+          {user.role === "admin" && <button className="compact" onClick={async () => { const r = await window.almaktaba.backup(); if (r?.ok) window.alert("تم إنشاء النسخة الاحتياطية"); }}>إنشاء نسخة احتياطية</button>}
+        </section>}
+      </main>
+    </div>
+
+    {showPassword && <div className="modal"><form className="modal-card" onSubmit={changePassword}><h3>تغيير كلمة المرور</h3><input type="password" placeholder="كلمة المرور الحالية" value={passwords.old} onChange={e => setPasswords({...passwords, old:e.target.value})}/><input type="password" placeholder="كلمة المرور الجديدة" value={passwords.next} onChange={e => setPasswords({...passwords, next:e.target.value})}/><button className="primary">حفظ</button><button type="button" onClick={() => setShowPassword(false)}>إلغاء</button></form></div>}
   </div>;
+}
+
+function TransactionTable({ rows, user, onEdit, onCancel }: { rows: Tx[]; user: User; onEdit: (t: Tx) => void; onCancel: (t: Tx) => void }) {
+  return <div className="table-wrap"><table><thead><tr><th>التاريخ</th><th>النوع</th><th>المبلغ</th><th>التبرير</th><th>المستفيد</th><th>المسجل</th><th>الحالة</th><th>إجراء</th></tr></thead><tbody>
+    {rows.map(t => <tr key={t.id}><td>{new Date(t.created_at).toLocaleString("ar-DZ")}</td><td>{t.type}</td><td>{Number(t.amount).toLocaleString("ar-DZ")} دج</td><td>{t.reason}</td><td>{t.beneficiary || "—"}</td><td>{t.created_by_name}</td><td>{t.status === "active" ? "نشطة" : "ملغاة"}</td><td>{t.status === "active" && (user.role === "admin" || t.created_by === user.id) ? <><button onClick={() => onEdit(t)}>تعديل</button> <button onClick={() => onCancel(t)}>إلغاء</button></> : "—"}</td></tr>)}
+  </tbody></table>{rows.length === 0 && <div className="empty">لا توجد عمليات.</div>}</div>;
 }
 
 createRoot(document.getElementById("root")!).render(<App />);
