@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from "electron";
+import { app, BrowserWindow, ipcMain, dialog, Menu } from "electron";
 import path from "node:path";
 import fs from "node:fs";
 import crypto from "node:crypto";
@@ -185,11 +185,14 @@ ipcMain.handle("system:backup", async () => {
 });
 
 function createWindow() {
+  Menu.setApplicationMenu(null);
   const win = new BrowserWindow({
     width: 1440,
     height: 900,
     minWidth: 1050,
     minHeight: 700,
+    title: "المكتبة",
+    autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false }
   });
   if (!app.isPackaged) win.loadURL("http://localhost:5173");
