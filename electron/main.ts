@@ -17,29 +17,22 @@ function verifyPassword(password: string, stored: string) {
   const actual = crypto.scryptSync(password, salt, 64).toString("hex");
   return crypto.timingSafeEqual(Buffer.from(actual, "hex"), Buffer.from(expected, "hex"));
 }
-function saveDb() {
-  fs.writeFileSync(dbPath, Buffer.from(db.export()));
-}
+function saveDb() { fs.writeFileSync(dbPath, Buffer.from(db.export())); }
 function query(sql: string, params: any[] = []) {
-  const stmt = db.prepare(sql);
-  stmt.bind(params);
+  const stmt = db.prepare(sql); stmt.bind(params);
   const rows: any[] = [];
   while (stmt.step()) rows.push(stmt.getAsObject());
-  stmt.free();
-  return rows;
+  stmt.free(); return rows;
 }
 function audit(action: string, entityType: string, entityId: number | null, details: string) {
   if (!session) return;
-  db.run(
-    "INSERT INTO audit_logs(actor_id,action,entity_type,entity_id,details,created_at) VALUES(?,?,?,?,?,?)",
-    [session.id, action, entityType, entityId, details, new Date().toISOString()]
-  );
+  db.run("INSERT INTO audit_logs(actor_id,action,entity_type,entity_id,details,created_at) VALUES(?,?,?,?,?,?)", [session.id, action, entityType, entityId, details, new Date().toISOString()]);
   saveDb();
 }
 
 async function initDb() {
   const SQL = await initSqlJs({
-    locateFile: (file) => path.join(process.resourcesPath, "node_modules", "sql.js", "dist", file)
+    locateFile: (file: string) => path.join(process.resourcesPath, "node_modules", "sql.js", "dist", file)
   });
   dbPath = path.join(app.getPath("userData"), "almaktaba.sqlite");
   db = fs.existsSync(dbPath) ? new SQL.Database(fs.readFileSync(dbPath)) : new SQL.Database();
@@ -93,10 +86,7 @@ async function initDb() {
       ["admin", "الحساب 3", "admin", "1234"]
     ];
     for (const [username, displayName, role, password] of users) {
-      db.run(
-        "INSERT INTO users(username,display_name,role,password_hash,created_at) VALUES(?,?,?,?,?)",
-        [username, displayName, role, hashPassword(String(password)), now]
-      );
+      db.run("INSERT INTO users(username,display_name,role,password_hash,created_at) VALUES(?,?,?,?,?)", [username, displayName, role, hashPassword(String(password)), now]);
     }
     saveDb();
   }
@@ -105,36 +95,20 @@ async function initDb() {
 function visibleTransactions() {
   if (!session) return [];
   if (session.role === "admin") {
-    return query(`
-      SELECT t.*, u.display_name AS created_by_name
-      FROM transactions t JOIN users u ON u.id=t.created_by
-      WHERE t.visibility='shop' OR (t.visibility='admin_private' AND t.created_by=?)
-      ORDER BY t.id DESC
-    `, [session.id]);
+    return query(`SELECT t.*, u.display_name AS created_by_name FROM transactions t JOIN users u ON u.id=t.created_by WHERE t.visibility='shop' OR (t.visibility='admin_private' AND t.created_by=?) ORDER BY t.id DESC`, [session.id]);
   }
-  return query(`
-    SELECT t.*, u.display_name AS created_by_name
-    FROM transactions t JOIN users u ON u.id=t.created_by
-    WHERE t.visibility='shop'
-    ORDER BY t.id DESC
-  `);
+  return query(`SELECT t.*, u.display_name AS created_by_name FROM transactions t JOIN users u ON u.id=t.created_by WHERE t.visibility='shop' ORDER BY t.id DESC`);
 }
 
 ipcMain.handle("auth:login", (_event, { username, password }) => {
   const user = query("SELECT * FROM users WHERE username=? AND active=1", [username])[0];
-  if (!user || !verifyPassword(password, user.password_hash)) {
-    return { ok: false, error: "اسم المستخدم أو كلمة المرور غير صحيحة" };
-  }
+  if (!user || !verifyPassword(password, user.password_hash)) return { ok: false, error: "اسم المستخدم أو كلمة المرور غير صحيحة" };
   session = { id: Number(user.id), username: user.username, displayName: user.display_name, role: user.role };
   audit("login", "auth", null, "تسجيل دخول");
   return { ok: true, user: session };
 });
 
-ipcMain.handle("auth:logout", () => {
-  session = null;
-  return { ok: true };
-});
-
+ipcMain.handle("auth:logout", () => { session = null; return { ok: true }; });
 ipcMain.handle("auth:session", () => session);
 
 ipcMain.handle("auth:change-own-password", (_event, { oldPassword, newPassword }) => {
@@ -155,17 +129,12 @@ ipcMain.handle("transactions:create", (_event, input) => {
   const type = String(input?.type || "").trim();
   const reason = String(input?.reason || "").trim();
   const amount = Number(input?.amount);
-  if (!type || !reason || !Number.isFinite(amount) || amount <= 0) {
-    return { ok: false, error: "نوع العملية والمبلغ والتبرير حقول إجبارية" };
-  }
+  if (!type || !reason || !Number.isFinite(amount) || amount <= 0) return { ok: false, error: "نوع العملية والمبلغ والتبرير حقول إجبارية" };
   const beneficiary = String(input?.beneficiary || "").trim();
   const notes = String(input?.notes || "").trim();
   const visibility = session.role === "admin" && input?.visibility === "admin_private" ? "admin_private" : "shop";
   const now = new Date().toISOString();
-  db.run(
-    "INSERT INTO transactions(type,amount,reason,beneficiary,notes,visibility,created_by,created_at) VALUES(?,?,?,?,?,?,?,?)",
-    [type, amount, reason, beneficiary, notes, visibility, session.id, now]
-  );
+  db.run("INSERT INTO transactions(type,amount,reason,beneficiary,notes,visibility,created_by,created_at) VALUES(?,?,?,?,?,?,?,?)", [type, amount, reason, beneficiary, notes, visibility, session.id, now]);
   const id = Number(query("SELECT last_insert_rowid() AS id")[0].id);
   audit("create", "transaction", id, JSON.stringify({ type, amount, reason, beneficiary, notes, visibility }));
   saveDb();
@@ -176,8 +145,7 @@ ipcMain.handle("transactions:update", (_event, { id, input }) => {
   if (!session) return { ok: false, error: "غير مسجل الدخول" };
   const t = query("SELECT * FROM transactions WHERE id=? AND status='active'", [id])[0];
   if (!t) return { ok: false, error: "العملية غير موجودة" };
-  const owner = Number(t.created_by) === session.id;
-  if (session.role !== "admin" && !owner) return { ok: false, error: "لا يمكنك تعديل عملية سجلها الشريك الآخر" };
+  if (session.role !== "admin" && Number(t.created_by) !== session.id) return { ok: false, error: "لا يمكنك تعديل عملية سجلها الشريك الآخر" };
   if (t.visibility === "admin_private" && session.role !== "admin") return { ok: false, error: "هذه العملية خاصة" };
   const type = String(input?.type || "").trim();
   const reason = String(input?.reason || "").trim();
@@ -187,10 +155,7 @@ ipcMain.handle("transactions:update", (_event, { id, input }) => {
   const notes = String(input?.notes || "").trim();
   const visibility = session.role === "admin" && input?.visibility === "admin_private" ? "admin_private" : t.visibility;
   const now = new Date().toISOString();
-  db.run(
-    "UPDATE transactions SET type=?,amount=?,reason=?,beneficiary=?,notes=?,visibility=?,updated_at=? WHERE id=?",
-    [type, amount, reason, beneficiary, notes, visibility, now, id]
-  );
+  db.run("UPDATE transactions SET type=?,amount=?,reason=?,beneficiary=?,notes=?,visibility=?,updated_at=? WHERE id=?", [type, amount, reason, beneficiary, notes, visibility, now, id]);
   audit("update", "transaction", id, JSON.stringify({ previous: t, newValues: input }));
   saveDb();
   return { ok: true };
@@ -210,11 +175,7 @@ ipcMain.handle("transactions:void", (_event, { id, reason }) => {
 
 ipcMain.handle("system:backup", async () => {
   if (!session || session.role !== "admin") return { ok: false, error: "النسخ الاحتياطي متاح للحساب 3 فقط" };
-  const result = await dialog.showSaveDialog({
-    title: "حفظ نسخة احتياطية",
-    defaultPath: `almaktaba-${new Date().toISOString().slice(0, 10)}.sqlite`,
-    filters: [{ name: "SQLite", extensions: ["sqlite"] }]
-  });
+  const result = await dialog.showSaveDialog({ title: "حفظ نسخة احتياطية", defaultPath: `almaktaba-${new Date().toISOString().slice(0, 10)}.sqlite`, filters: [{ name: "SQLite", extensions: ["sqlite"] }] });
   if (result.canceled || !result.filePath) return { ok: false };
   fs.copyFileSync(dbPath, result.filePath);
   return { ok: true, path: result.filePath };
@@ -226,20 +187,11 @@ function createWindow() {
     height: 900,
     minWidth: 1050,
     minHeight: 700,
-    webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
-      contextIsolation: true,
-      nodeIntegration: false
-    }
+    webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false }
   });
   if (!app.isPackaged) win.loadURL("http://localhost:5173");
   else win.loadFile(path.join(__dirname, "../../dist/index.html"));
 }
 
-app.whenReady().then(async () => {
-  await initDb();
-  createWindow();
-});
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
-});
+app.whenReady().then(async () => { await initDb(); createWindow(); });
+app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
