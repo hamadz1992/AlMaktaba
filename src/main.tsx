@@ -82,7 +82,7 @@ function App() {
 
   return <div className="app">
     <header className="topbar">
-      <div><b className="title">المكتبة</b><span className="user"> — {user.displayName}</span></div>
+      <div><b className="title">المكتبة</b><span className="user"> — {user.role === "admin" ? "المستخدم" : user.displayName}</span></div>
       <div className="actions">
         <button onClick={() => setShowPassword(true)}>تغيير كلمة المرور</button>
         {user.role === "admin" && <button onClick={async () => { const r = await window.almaktaba.backup(); if (r?.ok) window.alert("تم إنشاء النسخة الاحتياطية"); }}>نسخة احتياطية</button>}
@@ -101,7 +101,7 @@ function App() {
       <section className="stats">
         <div><span>الحركات المعروضة</span><strong>{filtered.length}</strong></div>
         <div><span>إجمالي القيم النشطة</span><strong>{activeTotal.toLocaleString("ar-DZ")} دج</strong></div>
-        <div><span>الدور</span><strong>{user.role === "admin" ? "إدارة كاملة" : user.displayName}</strong></div>
+        <div><span>الصلاحيات</span><strong>{user.role === "admin" ? "كاملة" : "حساب شخصي"}</strong></div>
       </section>
 
       <div className="grid">
@@ -122,8 +122,8 @@ function App() {
             {user.role === "admin" && <>
               <label>ظهور العملية</label>
               <select value={form.visibility} onChange={e => setForm({...form,visibility:e.target.value})}>
-                <option value="shop">عملية محل — تظهر للشريكين</option>
-                <option value="admin_private">عملية خاصة بالحساب 3</option>
+                <option value="shop">عملية المحل — تظهر للشريكين</option>
+                <option value="admin_private">عملية خاصة</option>
               </select>
             </>}
             {error && <div className="error">{error}</div>}
@@ -133,7 +133,7 @@ function App() {
         </section>
 
         <section className="card">
-          <div><h2>سجل الحركات</h2><p className="muted">عمليات الحساب 3 الخاصة لا تظهر للشريكين.</p></div>
+          <div><h2>سجل الحركات</h2><p className="muted">السجل يعرض العمليات المتاحة لهذا الحساب.</p></div>
           <div className="filters">
             <input placeholder="بحث..." value={filter.search} onChange={e => setFilter({...filter,search:e.target.value})}/>
             <select value={filter.type} onChange={e => setFilter({...filter,type:e.target.value})}><option>الكل</option>{types.map(t => <option key={t}>{t}</option>)}</select>
