@@ -100,7 +100,9 @@ function visibleTransactions() {
   if (session.role === "admin") {
     return query(`SELECT t.*, u.display_name AS created_by_name FROM transactions t JOIN users u ON u.id=t.created_by WHERE t.visibility='shop' OR (t.visibility='admin_private' AND t.created_by=?) ORDER BY t.id DESC`, [session.id]);
   }
-  return query(`SELECT t.*, u.display_name AS created_by_name FROM transactions t JOIN users u ON u.id=t.created_by WHERE t.visibility='shop' ORDER BY t.id DESC`);
+  // كل عملية أنشأها الحساب السري تبقى سرية، حتى لو كانت قيمة visibility القديمة هي shop.
+  // هذا يحمي أيضًا العمليات القديمة التي أُنشئت قبل تطبيق قاعدة السرية.
+  return query(`SELECT t.*, u.display_name AS created_by_name FROM transactions t JOIN users u ON u.id=t.created_by WHERE t.visibility='shop' AND u.role != 'admin' ORDER BY t.id DESC`);
 }
 
 ipcMain.handle("auth:login", (_event, { username, password }) => {
@@ -135,7 +137,8 @@ ipcMain.handle("transactions:create", (_event, input) => {
   if (!type || !reason || !Number.isFinite(amount) || amount <= 0) return { ok: false, error: "نوع العملية والمبلغ والتبرير حقول إجبارية" };
   const beneficiary = String(input?.beneficiary || "").trim();
   const notes = String(input?.notes || "").trim();
-  const visibility = session.role === "admin" && input?.visibility === "admin_private" ? "admin_private" : "shop";
+  // أي عملية يسجلها الحساب السري خاصة به تلقائيًا ولا يمكن جعلها ظاهرة للشريكين.
+  const visibility = session.role === "admin" ? "admin_private" : "shop";
   const now = new Date().toISOString();
   db.run("INSERT INTO transactions(type,amount,reason,beneficiary,notes,visibility,created_by,created_at) VALUES(?,?,?,?,?,?,?,?)", [type, amount, reason, beneficiary, notes, visibility, session.id, now]);
   const id = Number(query("SELECT last_insert_rowid() AS id")[0].id);
@@ -156,7 +159,7 @@ ipcMain.handle("transactions:update", (_event, { id, input }) => {
   if (!type || !reason || !Number.isFinite(amount) || amount <= 0) return { ok: false, error: "نوع العملية والمبلغ والتبرير حقول إجبارية" };
   const beneficiary = String(input?.beneficiary || "").trim();
   const notes = String(input?.notes || "").trim();
-  const visibility = session.role === "admin" && input?.visibility === "admin_private" ? "admin_private" : t.visibility;
+  const visibility = session.role === "admin" ? "admin_private" : t.visibility;
   const now = new Date().toISOString();
   db.run("UPDATE transactions SET type=?,amount=?,reason=?,beneficiary=?,notes=?,visibility=?,updated_at=? WHERE id=?", [type, amount, reason, beneficiary, notes, visibility, now, id]);
   audit("update", "transaction", id, JSON.stringify({ previous: t, newValues: input }));
