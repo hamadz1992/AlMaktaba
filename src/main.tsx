@@ -6,10 +6,14 @@ type User = { id: number; username: string; displayName: string; role: "partner1
 type Tx = { id:number; type:string; amount:number; reason:string; beneficiary:string; notes:string; visibility:string; created_by:number; created_by_name:string; created_at:string; updated_at:string|null; status:string };
 
 const types = ["شراء", "بيع", "مصروف", "سحب", "إيداع", "دين", "تسديد دين", "أخرى"];
+const SAVED_USERNAME_KEY = "almaktaba_saved_username";
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
-  const [login, setLogin] = useState({ username: "", password: "" });
+  const [login, setLogin] = useState(() => ({
+    username: localStorage.getItem(SAVED_USERNAME_KEY) || "",
+    password: ""
+  }));
   const [error, setError] = useState("");
   const [txs, setTxs] = useState<Tx[]>([]);
   const [form, setForm] = useState({ type: "شراء", amount: "", reason: "", beneficiary: "", notes: "", visibility: "shop" });
@@ -26,6 +30,15 @@ function App() {
     e.preventDefault(); setError("");
     const r = await window.almaktaba.login(login.username, login.password);
     if (!r.ok) return setError(r.error);
+
+    // حفظ اسم المستخدم فقط. الحساب السري لا يُحفظ حتى لا ينكشف وجوده.
+    if (r.user.role === "admin") {
+      localStorage.removeItem(SAVED_USERNAME_KEY);
+    } else {
+      localStorage.setItem(SAVED_USERNAME_KEY, r.user.username);
+    }
+
+    setLogin({ username: r.user.role === "admin" ? "" : r.user.username, password: "" });
     setUser(r.user);
   }
 
