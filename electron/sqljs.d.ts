@@ -1,11 +1,4 @@
 declare module "sql.js" {
-  export class Database {
-    constructor(data?: Uint8Array | ArrayBuffer | number[]);
-    run(sql: string, params?: any[]): void;
-    prepare(sql: string): Statement;
-    export(): Uint8Array;
-  }
-
   export interface Statement {
     bind(params?: any[]): void;
     step(): boolean;
@@ -13,13 +6,20 @@ declare module "sql.js" {
     free(): void;
   }
 
+  export interface Database {
+    run(sql: string, params?: any[]): void;
+    prepare(sql: string): Statement;
+    export(): Uint8Array;
+  }
+
   interface SqlJsStatic {
-    Database: typeof Database;
+    Database: new (data?: Uint8Array | ArrayBuffer | number[]) => Database;
   }
 
   type SqlJsConfig = {
     locateFile?: (file: string) => string;
   };
 
-  export default function initSqlJs(config?: SqlJsConfig): Promise<SqlJsStatic>;
+  const initSqlJs: (config?: SqlJsConfig) => Promise<SqlJsStatic>;
+  export default initSqlJs;
 }
