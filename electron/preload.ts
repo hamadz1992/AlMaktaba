@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld("almaktaba", {
   minimizeWindow: () => ipcRenderer.invoke("window:minimize"),
   closeWindow: () => ipcRenderer.invoke("window:close"),
   listTransactions: () => ipcRenderer.invoke("transactions:list"),
+  listTransactionAudit: () => ipcRenderer.invoke("audit:transactions"),
   createTransaction: (input: unknown) => ipcRenderer.invoke("transactions:create", input),
   updateTransaction: (id: number, input: unknown) => ipcRenderer.invoke("transactions:update", { id, input }),
   voidTransaction: (id: number, reason: string) => ipcRenderer.invoke("transactions:void", { id, reason }),
