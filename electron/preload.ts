@@ -8,6 +8,10 @@ contextBridge.exposeInMainWorld("almaktaba", {
   createTransaction: (input: unknown) => ipcRenderer.invoke("transactions:create", input),
   updateTransaction: (id: number, input: unknown) => ipcRenderer.invoke("transactions:update", { id, input }),
   voidTransaction: (id: number, reason: string) => ipcRenderer.invoke("transactions:void", { id, reason }),
+  listProducts: () => ipcRenderer.invoke("products:list"),
+  createProduct: (input: unknown) => ipcRenderer.invoke("products:create", input),
+  updateProduct: (id: number, input: unknown) => ipcRenderer.invoke("products:update", { id, input }),
+  deleteProduct: (id: number) => ipcRenderer.invoke("products:delete", id),
   backup: () => ipcRenderer.invoke("system:backup"),
   changeOwnPassword: (oldPassword: string, newPassword: string) => ipcRenderer.invoke("auth:change-own-password", { oldPassword, newPassword })
 });
