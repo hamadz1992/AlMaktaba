@@ -6,6 +6,7 @@ import initSqlJs, { Database } from "sql.js";
 
 let db: Database;
 let dbPath = "";
+let mainWindow: BrowserWindow | null = null;
 let session: { id: number; username: string; displayName: string; role: "partner1" | "partner2" | "admin" } | null = null;
 
 function hashPassword(password: string, salt = crypto.randomBytes(16).toString("hex")) { return `${salt}:${crypto.scryptSync(password, salt, 64).toString("hex")}`; }
@@ -35,7 +36,11 @@ function visibleProducts() { if (!session) return []; return query("SELECT * FRO
 ipcMain.handle("auth:login", (_event,{username,password})=>{ const user=query("SELECT * FROM users WHERE username=? AND active=1",[username])[0]; if(!user||!verifyPassword(password,user.password_hash))return{ok:false,error:"اسم المستخدم أو كلمة المرور غير صحيحة"}; session={id:Number(user.id),username:user.username,displayName:user.display_name,role:user.role}; audit("login","auth",null,"تسجيل دخول"); return{ok:true,user:session}; });
 ipcMain.handle("auth:logout",()=>{session=null;return{ok:true};});
 ipcMain.handle("auth:session",()=>session);
+ipcMain.handle("auth:update-profile",(_event,{username,displayName})=>{if(!session)return{ok:false,error:"غير مسجل الدخول"};const nextUsername=String(username||"").trim();const nextDisplayName=String(displayName||"").trim();if(!nextUsername||!nextDisplayName)return{ok:false,error:"اسم المستخدم والاسم الظاهر حقول إجبارية"};if(!/^[A-Za-z0-9_]+$/.test(nextUsername))return{ok:false,error:"اسم المستخدم يجب أن يحتوي على أحرف إنجليزية أو أرقام أو _ فقط"};const duplicate=query("SELECT id FROM users WHERE username=? AND id!=?",[nextUsername,session.id])[0];if(duplicate)return{ok:false,error:"اسم المستخدم مستخدم بالفعل"};const previous={username:session.username,displayName:session.displayName};db.run("UPDATE users SET username=?,display_name=? WHERE id=?",[nextUsername,nextDisplayName,session.id]);session={...session,username:nextUsername,displayName:nextDisplayName};audit("update","user",session.id,JSON.stringify({previous,newValues:{username:nextUsername,displayName:nextDisplayName}}));saveDb();return{ok:true,user:session};});
 ipcMain.handle("auth:change-own-password",(_event,{oldPassword,newPassword})=>{if(!session)return{ok:false,error:"غير مسجل الدخول"};if(String(newPassword||"").length<6)return{ok:false,error:"كلمة المرور الجديدة يجب أن تكون 6 أحرف/أرقام على الأقل"};const u=query("SELECT password_hash FROM users WHERE id=?",[session.id])[0];if(!u||!verifyPassword(oldPassword,u.password_hash))return{ok:false,error:"كلمة المرور الحالية غير صحيحة"};db.run("UPDATE users SET password_hash=? WHERE id=?",[hashPassword(newPassword),session.id]);audit("password_change","user",session.id,"تغيير كلمة المرور الذاتية");saveDb();return{ok:true};});
+
+ipcMain.handle("window:minimize",()=>{mainWindow?.minimize();return{ok:true};});
+ipcMain.handle("window:close",()=>{mainWindow?.close();return{ok:true};});
 
 ipcMain.handle("transactions:list",()=>visibleTransactions());
 ipcMain.handle("transactions:create",(_event,input)=>{if(!session)return{ok:false,error:"غير مسجل الدخول"};const type=String(input?.type||"").trim(),reason=String(input?.reason||"").trim(),amount=Number(input?.amount);if(!type||!reason||!Number.isFinite(amount)||amount<=0)return{ok:false,error:"نوع العملية والمبلغ والتبرير حقول إجبارية"};const beneficiary=String(input?.beneficiary||"").trim(),notes=String(input?.notes||"").trim(),visibility=session.role==="admin"?"admin_private":"shop",now=new Date().toISOString();db.run("INSERT INTO transactions(type,amount,reason,beneficiary,notes,visibility,created_by,created_at) VALUES(?,?,?,?,?,?,?,?)",[type,amount,reason,beneficiary,notes,visibility,session.id,now]);const id=Number(query("SELECT last_insert_rowid() AS id")[0].id);audit("create","transaction",id,JSON.stringify({type,amount,reason,visibility}));saveDb();return{ok:true,id};});
@@ -49,6 +54,6 @@ ipcMain.handle("products:delete",(_event,id)=>{if(!session)return{ok:false,error
 
 ipcMain.handle("system:backup",async()=>{if(!session||session.role!=="admin")return{ok:false,error:"هذه العملية غير متاحة"};const result=await dialog.showSaveDialog({title:"حفظ نسخة احتياطية",defaultPath:`almaktaba-${new Date().toISOString().slice(0,10)}.sqlite`,filters:[{name:"SQLite",extensions:["sqlite"]}]});if(result.canceled||!result.filePath)return{ok:false};fs.copyFileSync(dbPath,result.filePath);return{ok:true,path:result.filePath};});
 
-function createWindow(){Menu.setApplicationMenu(null);const win=new BrowserWindow({width:1150,height:720,minWidth:900,minHeight:620,title:"المكتبة",autoHideMenuBar:true,webPreferences:{preload:path.join(__dirname,"preload.js"),contextIsolation:true,nodeIntegration:false}});if(!app.isPackaged)win.loadURL("http://localhost:5173");else win.loadFile(path.join(__dirname,"../../dist/index.html"));}
+function createWindow(){Menu.setApplicationMenu(null);mainWindow=new BrowserWindow({width:1150,height:720,minWidth:900,minHeight:620,frame:false,title:"المكتبة",autoHideMenuBar:true,webPreferences:{preload:path.join(__dirname,"preload.js"),contextIsolation:true,nodeIntegration:false}});if(!app.isPackaged)mainWindow.loadURL("http://localhost:5173");else mainWindow.loadFile(path.join(__dirname,"../../dist/index.html"));}
 app.whenReady().then(async()=>{await initDb();createWindow();});
 app.on("window-all-closed",()=>{if(process.platform!=="darwin")app.quit();});
