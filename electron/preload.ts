@@ -20,42 +20,82 @@ contextBridge.exposeInMainWorld("almaktaba", {
   backup: () => ipcRenderer.invoke("system:backup")
 });
 
-function showAuditModal() {
+async function showAuditModal() {
   document.querySelector("[data-almaktaba-audit-modal]")?.remove();
-  ipcRenderer.invoke("audit:transactions").then((result: any) => {
-    if (!result?.ok) return;
+  try {
+    const result = await ipcRenderer.invoke("audit:transactions");
+    if (!result?.ok) {
+      window.alert(result?.error || "تعذر فتح سجل التعديلات");
+      return;
+    }
+
     const rows = Array.isArray(result.rows) ? result.rows : [];
     const modal = document.createElement("div");
     modal.dataset.almaktabaAuditModal = "true";
-    modal.style.cssText = "position:fixed;inset:0;background:rgba(20,18,28,.45);z-index:99999;display:grid;place-items:center;padding:24px;backdrop-filter:blur(3px)";
+    modal.dir = "rtl";
+    modal.style.cssText = "position:fixed;inset:0;background:rgba(20,18,28,.48);z-index:999999;display:grid;place-items:center;padding:24px;backdrop-filter:blur(4px)";
+
     const card = document.createElement("section");
-    card.dir = "rtl";
-    card.style.cssText = "width:min(1100px,96vw);max-height:86vh;overflow:auto;background:#fff;border-radius:18px;padding:20px;box-shadow:0 24px 70px rgba(0,0,0,.22);font-family:Segoe UI,Tahoma,Arial,sans-serif;color:#17202a";
+    card.style.cssText = "width:min(1100px,96vw);max-height:86vh;overflow:auto;background:#fff;border-radius:18px;padding:20px;box-shadow:0 24px 70px rgba(0,0,0,.24);font-family:Segoe UI,Tahoma,Arial,sans-serif;color:#17202a";
+
     const title = document.createElement("div");
     title.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px";
-    title.innerHTML = '<div><h2 style="margin:0 0 3px">سجل التعديلات</h2><span style="color:#77808d;font-size:12px">تغييرات المعاملات فقط</span></div>';
+    const heading = document.createElement("div");
+    heading.innerHTML = '<h2 style="margin:0 0 3px">سجل التعديلات</h2><span style="color:#77808d;font-size:12px">تغييرات المعاملات فقط</span>';
+    title.appendChild(heading);
+
     const close = document.createElement("button");
+    close.type = "button";
     close.textContent = "إغلاق";
     close.style.cssText = "background:#f2f4f7;padding:8px 14px;border-radius:9px;border:0;cursor:pointer";
     close.onclick = () => modal.remove();
     title.appendChild(close);
     card.appendChild(title);
+
     const tableWrap = document.createElement("div");
     tableWrap.style.cssText = "overflow:auto;border:1px solid #edf0f4;border-radius:10px";
     const table = document.createElement("table");
     table.style.cssText = "width:100%;border-collapse:collapse;min-width:760px";
     table.innerHTML = '<thead><tr style="background:#fafbfc"><th style="padding:9px;text-align:right">التاريخ</th><th style="padding:9px;text-align:right">المستخدم</th><th style="padding:9px;text-align:right">نوع العملية</th><th style="padding:9px;text-align:right">المبلغ</th><th style="padding:9px;text-align:right">التبرير</th></tr></thead>';
+
     const tbody = document.createElement("tbody");
     const labels: Record<string,string> = { create: "إضافة معاملة", update: "تعديل معاملة", void: "إلغاء معاملة" };
     rows.forEach((row: any) => {
       const tr = document.createElement("tr");
-      const values = [new Date(row.created_at).toLocaleString("ar-DZ"), row.actor_name || row.actor_username || "—", labels[row.action] || row.action, row.amount == null ? "—" : `${Number(row.amount).toLocaleString("ar-DZ")} دج`, row.reason || (row.details || "—")];
-      values.forEach(value => { const td=document.createElement("td"); td.textContent=String(value); td.style.cssText="padding:9px;border-top:1px solid #edf0f4;white-space:nowrap;font-size:13px"; tr.appendChild(td); });
+      const values = [
+        new Date(row.created_at).toLocaleString("ar-DZ"),
+        row.actor_name || row.actor_username || "—",
+        labels[row.action] || row.action,
+        row.amount == null ? "—" : `${Number(row.amount).toLocaleString("ar-DZ")} دج`,
+        row.reason || row.void_reason || row.details || "—"
+      ];
+      values.forEach(value => {
+        const td = document.createElement("td");
+        td.textContent = String(value);
+        td.style.cssText = "padding:9px;border-top:1px solid #edf0f4;white-space:nowrap;font-size:13px";
+        tr.appendChild(td);
+      });
       tbody.appendChild(tr);
     });
-    if (!rows.length) { const tr=document.createElement("tr"); const td=document.createElement("td"); td.colSpan=5; td.textContent="لا توجد تعديلات على المعاملات حتى الآن."; td.style.cssText="padding:30px;text-align:center;color:#77808d"; tr.appendChild(td); tbody.appendChild(tr); }
-    table.appendChild(tbody); tableWrap.appendChild(table); card.appendChild(tableWrap); modal.appendChild(card); document.body.appendChild(modal);
-  });
+
+    if (!rows.length) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = 5;
+      td.textContent = "لا توجد تعديلات على المعاملات حتى الآن.";
+      td.style.cssText = "padding:30px;text-align:center;color:#77808d";
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+    }
+
+    table.appendChild(tbody);
+    tableWrap.appendChild(table);
+    card.appendChild(tableWrap);
+    modal.appendChild(card);
+    document.body.appendChild(modal);
+  } catch (error) {
+    window.alert(`تعذر فتح سجل التعديلات: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 async function ensureAdminAuditButton() {
@@ -66,18 +106,31 @@ async function ensureAdminAuditButton() {
     nav.querySelector("[data-audit-nav]")?.remove();
     return;
   }
+
   if (nav.querySelector("[data-audit-nav]")) return;
+
   const button = document.createElement("button");
   button.className = "nav-item";
   button.type = "button";
   button.dataset.auditNav = "true";
   button.innerHTML = '<span class="nav-icon">◷</span><span>سجل التعديلات</span>';
-  button.addEventListener("click", showAuditModal);
-  const settings = nav.querySelector("button:last-child");
+  button.addEventListener("click", () => { void showAuditModal(); });
+
+  const settings = Array.from(nav.querySelectorAll("button")).find((b) => b.textContent?.includes("الإعدادات"));
   if (settings) nav.insertBefore(button, settings); else nav.appendChild(button);
 }
 
 function installAdminAuditView() {
+  document.addEventListener("click", (event) => {
+    const target = event.target as HTMLElement | null;
+    const button = target?.closest<HTMLElement>("[data-audit-nav]");
+    if (button) {
+      event.preventDefault();
+      event.stopPropagation();
+      void showAuditModal();
+    }
+  }, true);
+
   const observer = new MutationObserver(() => { void ensureAdminAuditButton(); });
   observer.observe(document.documentElement, { childList: true, subtree: true });
   void ensureAdminAuditButton();
