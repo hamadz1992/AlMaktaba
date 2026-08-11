@@ -75,10 +75,8 @@ export function registerProductCreateHandler(
   ipcMain.handle("audit:transactions", () => {
     const session = getSession();
     if (!session) return { ok: false, error: "جلسة الدخول غير موجودة" };
-
     const currentUser = query("SELECT id, role FROM users WHERE id=? AND active=1", [session.id])[0];
     if (!currentUser || String(currentUser.role) !== "admin") return { ok: false, error: "هذه الصفحة متاحة للحساب الإداري فقط" };
-
     try {
       const rows = query(`
         SELECT a.id,a.action,a.entity_id,a.details,a.created_at,
@@ -99,15 +97,13 @@ export function registerProductCreateHandler(
 
   ipcMain.handle("backup:list", () => {
     const session = getSession();
-    if (!session) return { ok: false, error: "غير مسجل الدخول" };
+    if (!session || session.role !== "admin") return { ok: false, error: "هذه العملية متاحة للحساب الإداري فقط" };
     return { ok: true, backups: listBackupFiles().map(({ name, size, modifiedAt }) => ({ name, size, modifiedAt })) };
   });
 
   ipcMain.handle("backup:restore", async (_event, requestedName?: unknown) => {
     const session = getSession();
-    if (!session) return { ok: false, error: "غير مسجل الدخول" };
-    if (session.role !== "admin") return { ok: false, error: "استعادة قاعدة البيانات متاحة للحساب الإداري فقط" };
-
+    if (!session || session.role !== "admin") return { ok: false, error: "استعادة قاعدة البيانات متاحة للحساب الإداري فقط" };
     try {
       let sourcePath = "";
       if (typeof requestedName === "string" && requestedName.trim()) {
@@ -125,10 +121,8 @@ export function registerProductCreateHandler(
         if (result.canceled || !result.filePaths[0]) return { ok: false, canceled: true };
         sourcePath = result.filePaths[0];
       }
-
       const source = fs.readFileSync(sourcePath);
       if (source.length < 16 || source.subarray(0, 15).toString("utf8") !== "SQLite format 3") return { ok: false, error: "الملف المحدد ليس قاعدة بيانات SQLite صالحة" };
-
       saveDb();
       const currentPath = databasePath();
       fs.mkdirSync(path.dirname(currentPath), { recursive: true });
@@ -137,7 +131,6 @@ export function registerProductCreateHandler(
       const safetyName = `قبل-الاستعادة-${new Date().toISOString().replace(/[:.]/g, "-")}.sqlite`;
       fs.copyFileSync(currentPath, path.join(safetyDir, safetyName));
       fs.copyFileSync(sourcePath, currentPath);
-
       app.relaunch();
       app.exit(0);
       return { ok: true };
