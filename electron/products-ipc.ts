@@ -42,13 +42,40 @@ export function registerProductCreateHandler(
 
   ipcMain.handle("audit:transactions", () => {
     const session = getSession();
-    if (!session || session.role !== "admin") return { ok: false, error: "غير متاح" };
-    const rows = query(`SELECT a.id,a.action,a.entity_id,a.details,a.created_at,u.display_name AS actor_name,u.username AS actor_username,t.type,t.amount,t.reason,t.status
-      FROM audit_logs a
-      JOIN users u ON u.id=a.actor_id
-      LEFT JOIN transactions t ON t.id=a.entity_id
-      WHERE a.entity_type='transaction' AND a.action IN ('create','update','void')
-      ORDER BY a.id DESC`);
-    return { ok: true, rows };
+    if (!session) return { ok: false, error: "جلسة الدخول غير موجودة" };
+
+    // لا نعتمد فقط على نسخة الدور الموجودة في الذاكرة؛ نتحقق من الدور الحقيقي في قاعدة البيانات.
+    const currentUser = query("SELECT id, role FROM users WHERE id=? AND active=1", [session.id])[0];
+    if (!currentUser || String(currentUser.role) !== "admin") {
+      return { ok: false, error: "هذه الصفحة متاحة للحساب الإداري فقط" };
+    }
+
+    try {
+      const rows = query(`
+        SELECT
+          a.id,
+          a.action,
+          a.entity_id,
+          a.details,
+          a.created_at,
+          u.display_name AS actor_name,
+          u.username AS actor_username,
+          t.type,
+          t.amount,
+          t.reason,
+          t.void_reason,
+          t.status
+        FROM audit_logs a
+        JOIN users u ON u.id=a.actor_id
+        LEFT JOIN transactions t ON t.id=a.entity_id
+        WHERE a.entity_type='transaction'
+          AND a.action IN ('create','update','void')
+        ORDER BY a.id DESC
+      `);
+      return { ok: true, rows };
+    } catch (error) {
+      console.error("audit:transactions failed", error);
+      return { ok: false, error: `تعذر قراءة سجل التعديلات: ${error instanceof Error ? error.message : String(error)}` };
+    }
   });
 }
