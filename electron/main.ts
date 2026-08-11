@@ -84,8 +84,8 @@ async function initDb() {
   if (!count) {
     const now = new Date().toISOString();
     const users = [
-      ["partner1", "الشريك 1", "partner1", "1234"],
-      ["partner2", "الشريك 2", "partner2", "1234"],
+      ["partner1", "أحمد", "partner1", "1234"],
+      ["partner2", "محمد", "partner2", "1234"],
       ["admin", "الحساب 3", "admin", "1234"]
     ];
     for (const [username, displayName, role, password] of users) {
@@ -93,6 +93,11 @@ async function initDb() {
     }
     saveDb();
   }
+
+  // تحديث أسماء الحسابات الموجودة مسبقًا أيضًا.
+  db.run("UPDATE users SET display_name='أحمد' WHERE role='partner1'");
+  db.run("UPDATE users SET display_name='محمد' WHERE role='partner2'");
+  saveDb();
 }
 
 function visibleTransactions() {
