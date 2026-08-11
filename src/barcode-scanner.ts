@@ -56,9 +56,9 @@ function openScanner(input: HTMLInputElement) {
   const reader = new BrowserMultiFormatReader();
   void (async () => {
     try {
-      const devices = await reader.listVideoInputDevices();
-      const preferred = devices.find((d) => /back|rear|environment|خلف/i.test(d.label)) || devices[0];
-      controls = await reader.decodeFromVideoDevice(preferred?.deviceId, video, (result, error) => {
+      const devices: MediaDeviceInfo[] = await BrowserMultiFormatReader.listVideoInputDevices();
+      const preferred: MediaDeviceInfo | undefined = devices.find((d: MediaDeviceInfo) => /back|rear|environment|خلف/i.test(d.label)) || devices[0];
+      controls = await reader.decodeFromVideoDevice(preferred?.deviceId, video, (result: any, error: any) => {
         if (result) {
           const value = result.getText().trim();
           if (value) {
