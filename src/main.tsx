@@ -4,7 +4,7 @@ import "./styles.css";
 
 type User = { id: number; username: string; displayName: string; role: "partner1" | "partner2" | "admin" };
 type Tx = { id:number; type:string; amount:number; reason:string; beneficiary:string; notes:string; visibility:string; created_by:number; created_by_name:string; created_at:string; updated_at:string|null; status:string };
-type Section = "transactions" | "new" | "reports";
+type Section = "transactions" | "reports";
 
 const types = ["شراء", "بيع", "مصروف", "سحب", "إيداع", "دين", "تسديد دين", "أخرى"];
 const SAVED_USERNAME_KEY = "almaktaba_saved_username";
@@ -52,7 +52,8 @@ function App() {
   function startEdit(t: Tx) {
     setEditing(t.id);
     setForm({ type:t.type, amount:String(t.amount), reason:t.reason, visibility:t.visibility });
-    setSection("new");
+    setSection("transactions");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function resetForm() {
@@ -102,7 +103,7 @@ function App() {
 
   const nav: Array<[Section, string]> = [
     ["transactions", "المعاملات"],
-    ["new", "تسجيل حركة"]
+    ["reports", "التقارير"]
   ];
 
   return <div className="app">
@@ -122,33 +123,37 @@ function App() {
       </aside>
 
       <main className="content">
-        {section === "transactions" && <section className="card full-card">
-          <div className="page-heading"><h1>المعاملات</h1><p>سجل جميع العمليات المسجلة في المحل.</p></div>
-          <div className="filters">
-            <input placeholder="بحث في التبرير أو المبلغ..." value={filter.search} onChange={e => setFilter({...filter,search:e.target.value})}/>
-            <select value={filter.type} onChange={e => setFilter({...filter,type:e.target.value})}><option>الكل</option>{types.map(t => <option key={t}>{t}</option>)}</select>
-            <select value={filter.creator} onChange={e => setFilter({...filter,creator:e.target.value})}><option>الكل</option>{Array.from(new Set(txs.map(t => t.created_by_name))).map(n => <option key={n}>{n}</option>)}</select>
-          </div>
-          <TransactionTable rows={filtered} user={user} onEdit={startEdit} onCancel={cancelTx} />
-        </section>}
+        {section === "transactions" && <>
+          <div className="page-heading"><h1>المعاملات</h1><p>تسجيل الحركة ومراجعة سجل العمليات في نفس القسم.</p></div>
 
-        {section === "new" && <section className="card form-card">
-          <div className="page-heading"><h1>{editing ? "تعديل حركة" : "تسجيل حركة"}</h1><p>أدخل نوع العملية والمبلغ والتبرير فقط.</p></div>
-          <form onSubmit={submit}>
-            <label>نوع العملية</label>
-            <select value={form.type} onChange={e => setForm({...form,type:e.target.value})}>{types.map(t => <option key={t}>{t}</option>)}</select>
-            <label>المبلغ (دج)</label>
-            <input type="number" min="0.01" step="0.01" value={form.amount} onChange={e => setForm({...form,amount:e.target.value})}/>
-            <label>التبرير / السبب</label>
-            <input value={form.reason} onChange={e => setForm({...form,reason:e.target.value})} placeholder="مثال: شراء منتجات للمحل"/>
-            {user.role === "admin" && <><label>ظهور العملية</label><select value={form.visibility} onChange={e => setForm({...form,visibility:e.target.value})}><option value="admin_private">عملية خاصة</option><option value="shop">عملية المحل — تظهر للشريكين</option></select></>}
-            {error && <div className="error">{error}</div>}
-            <div className="form-actions">
-              <button className="primary">{editing ? "حفظ التعديل" : "تسجيل الحركة"}</button>
+          <section className="card transaction-form-card">
+            <div className="card-head">
+              <div><h2>{editing ? "تعديل حركة" : "تسجيل حركة"}</h2><p className="muted">المبلغ والتبرير حقول إجبارية.</p></div>
               {editing && <button type="button" onClick={resetForm}>إلغاء التعديل</button>}
             </div>
-          </form>
-        </section>}
+            <form onSubmit={submit} className="transaction-form">
+              <div><label>نوع العملية</label><select value={form.type} onChange={e => setForm({...form,type:e.target.value})}>{types.map(t => <option key={t}>{t}</option>)}</select></div>
+              <div><label>المبلغ (دج)</label><input type="number" min="0.01" step="0.01" value={form.amount} onChange={e => setForm({...form,amount:e.target.value})}/></div>
+              <div className="wide"><label>التبرير / السبب</label><input value={form.reason} onChange={e => setForm({...form,reason:e.target.value})} placeholder="مثال: شراء منتجات للمحل"/></div>
+              {user.role === "admin" && <div><label>ظهور العملية</label><select value={form.visibility} onChange={e => setForm({...form,visibility:e.target.value})}><option value="admin_private">عملية خاصة</option><option value="shop">عملية المحل — تظهر للشريكين</option></select></div>}
+              {error && <div className="error wide">{error}</div>}
+              <div className="form-actions wide">
+                <button className="primary">{editing ? "حفظ التعديل" : "تسجيل الحركة"}</button>
+                {editing && <button type="button" onClick={resetForm}>إلغاء</button>}
+              </div>
+            </form>
+          </section>
+
+          <section className="card full-card transactions-list-card">
+            <div className="card-head"><div><h2>سجل المعاملات</h2><p className="muted">العمليات المتاحة لهذا الحساب.</p></div><strong>{filtered.length} عملية</strong></div>
+            <div className="filters">
+              <input placeholder="بحث في التبرير أو المبلغ..." value={filter.search} onChange={e => setFilter({...filter,search:e.target.value})}/>
+              <select value={filter.type} onChange={e => setFilter({...filter,type:e.target.value})}><option>الكل</option>{types.map(t => <option key={t}>{t}</option>)}</select>
+              <select value={filter.creator} onChange={e => setFilter({...filter,creator:e.target.value})}><option>الكل</option>{Array.from(new Set(txs.map(t => t.created_by_name))).map(n => <option key={n}>{n}</option>)}</select>
+            </div>
+            <TransactionTable rows={filtered} user={user} onEdit={startEdit} onCancel={cancelTx} />
+          </section>
+        </>}
 
         {section === "reports" && <>
           <div className="page-heading"><h1>التقارير</h1><p>ملخص مالي للعمليات المسجلة والمتاحة لهذا الحساب.</p></div>
