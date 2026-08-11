@@ -26,12 +26,12 @@ contextBridge.exposeInMainWorld("almaktaba", {
   createProduct: (input: unknown) => ipcRenderer.invoke("products:create-safe", input),
   updateProduct: (id: number, input: unknown) => ipcRenderer.invoke("products:update", { id, input }),
   deleteProduct: (id: number) => ipcRenderer.invoke("products:delete", id),
-  backup: async () => isAdmin() ? ipcRenderer.invoke("system:backup") : { ok: false, error: "هذه العملية متاحة للحساب الإداري فقط" },
-  backupNow: async () => isAdmin() ? ipcRenderer.invoke("system:backup-now") : { ok: false, error: "هذه العملية متاحة للحساب الإداري فقط" },
+  backup: async () => (await isAdmin()) ? ipcRenderer.invoke("system:backup") : { ok: false, error: "هذه العملية متاحة للحساب الإداري فقط" },
+  backupNow: async () => (await isAdmin()) ? ipcRenderer.invoke("system:backup-now") : { ok: false, error: "هذه العملية متاحة للحساب الإداري فقط" },
   getBackupSettings: () => ipcRenderer.invoke("system:backup-settings"),
-  setBackupInterval: async (intervalMinutes: number) => isAdmin() ? ipcRenderer.invoke("system:set-backup-settings", { intervalMinutes }) : { ok: false, error: "هذه العملية متاحة للحساب الإداري فقط" },
+  setBackupInterval: async (intervalMinutes: number) => (await isAdmin()) ? ipcRenderer.invoke("system:set-backup-settings", { intervalMinutes }) : { ok: false, error: "هذه العملية متاحة للحساب الإداري فقط" },
   listBackups: () => ipcRenderer.invoke("backup:list"),
-  restoreBackup: async (name?: string) => isAdmin() ? ipcRenderer.invoke("backup:restore", name) : { ok: false, error: "استعادة قاعدة البيانات متاحة للحساب الإداري فقط" }
+  restoreBackup: async (name?: string) => (await isAdmin()) ? ipcRenderer.invoke("backup:restore", name) : { ok: false, error: "استعادة قاعدة البيانات متاحة للحساب الإداري فقط" }
 });
 
 function parseDetails(raw: unknown): any { if (!raw) return null; try { return typeof raw === "string" ? JSON.parse(raw) : raw; } catch { return null; } }
@@ -110,8 +110,7 @@ function installBackupView() {
 }
 
 async function ensureAdminAuditButton() {
-  const nav = document.querySelector<HTMLElement>(".main-nav"); if (!nav) return;
-  const session = await ipcRenderer.invoke("auth:session");
+  const nav = document.querySelector<HTMLElement>(".main-nav"); if (!nav) return; const session = await ipcRenderer.invoke("auth:session");
   if (!session || session.role !== "admin") { nav.querySelector("[data-audit-nav]")?.remove(); return; }
   if (nav.querySelector("[data-audit-nav]")) return;
   const button = document.createElement("button"); button.className = "nav-item"; button.type = "button"; button.dataset.auditNav = "true"; button.innerHTML = '<span class="nav-icon">◷</span><span>سجل التعديلات</span>'; button.addEventListener("click", () => { void showAuditModal(); });
@@ -123,5 +122,4 @@ function installAdminAuditView() {
   const observer = new MutationObserver(() => { void ensureAdminAuditButton(); }); observer.observe(document.documentElement, { childList: true, subtree: true }); void ensureAdminAuditButton();
 }
 
-if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => { installAdminAuditView(); installBackupView(); }, { once: true });
-else { installAdminAuditView(); installBackupView(); }
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => { installAdminAuditView(); installBackupView(); }, { once: true }); else { installAdminAuditView(); installBackupView(); }
