@@ -18,6 +18,9 @@ declare global {
       updateProduct(id: number, input: any): Promise<any>;
       deleteProduct(id: number): Promise<any>;
       backup(): Promise<any>;
+      backupNow(): Promise<any>;
+      getBackupSettings(): Promise<{ok:boolean;intervalMinutes:number;backupDir?:string;error?:string}>;
+      setBackupInterval(intervalMinutes: number): Promise<{ok:boolean;intervalMinutes?:number;backupDir?:string;error?:string}>;
     };
   }
 }
