@@ -1,26 +1,9 @@
-import { IpcMain, app, dialog } from "electron";
+import { IpcMain } from "electron";
 import type { Database } from "sql.js";
-import fs from "node:fs";
-import path from "node:path";
 
 function nextProductCode(query: (sql: string, params?: any[]) => any[]) {
   const row = query("SELECT COALESCE(MAX(id),0) + 1 AS next_id FROM products")[0];
   return `PRD-${String(Number(row?.next_id ?? 1)).padStart(6, "0")}`;
-}
-
-function backupDirectory() { return path.join(app.getPath("userData"), "backups"); }
-function databasePath() { return path.join(app.getPath("userData"), "almaktaba.sqlite"); }
-function listBackupFiles() {
-  const dir = backupDirectory();
-  if (!fs.existsSync(dir)) return [];
-  return fs.readdirSync(dir, { withFileTypes: true })
-    .filter(entry => entry.isFile() && entry.name.toLowerCase().endsWith(".sqlite"))
-    .map(entry => {
-      const filePath = path.join(dir, entry.name);
-      const stat = fs.statSync(filePath);
-      return { name: entry.name, path: filePath, size: stat.size, modifiedAt: stat.mtime.toISOString() };
-    })
-    .sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
 }
 
 export function registerProductCreateHandler(
@@ -92,51 +75,6 @@ export function registerProductCreateHandler(
     } catch (error) {
       console.error("audit:transactions failed", error);
       return { ok: false, error: `تعذر قراءة سجل التعديلات: ${error instanceof Error ? error.message : String(error)}` };
-    }
-  });
-
-  ipcMain.handle("backup:list", () => {
-    const session = getSession();
-    if (!session || session.role !== "admin") return { ok: false, error: "هذه العملية متاحة للحساب الإداري فقط" };
-    return { ok: true, backups: listBackupFiles().map(({ name, size, modifiedAt }) => ({ name, size, modifiedAt })) };
-  });
-
-  ipcMain.handle("backup:restore", async (_event, requestedName?: unknown) => {
-    const session = getSession();
-    if (!session || session.role !== "admin") return { ok: false, error: "استعادة قاعدة البيانات متاحة للحساب الإداري فقط" };
-    try {
-      let sourcePath = "";
-      if (typeof requestedName === "string" && requestedName.trim()) {
-        const safeName = path.basename(requestedName.trim());
-        const candidate = path.join(backupDirectory(), safeName);
-        if (!fs.existsSync(candidate) || !candidate.toLowerCase().endsWith(".sqlite")) return { ok: false, error: "النسخة الاحتياطية غير موجودة" };
-        sourcePath = candidate;
-      } else {
-        const result = await dialog.showOpenDialog({
-          title: "اختيار نسخة احتياطية للاستعادة",
-          defaultPath: backupDirectory(),
-          properties: ["openFile"],
-          filters: [{ name: "قاعدة بيانات المكتبة", extensions: ["sqlite"] }]
-        });
-        if (result.canceled || !result.filePaths[0]) return { ok: false, canceled: true };
-        sourcePath = result.filePaths[0];
-      }
-      const source = fs.readFileSync(sourcePath);
-      if (source.length < 16 || source.subarray(0, 15).toString("utf8") !== "SQLite format 3") return { ok: false, error: "الملف المحدد ليس قاعدة بيانات SQLite صالحة" };
-      saveDb();
-      const currentPath = databasePath();
-      fs.mkdirSync(path.dirname(currentPath), { recursive: true });
-      const safetyDir = backupDirectory();
-      fs.mkdirSync(safetyDir, { recursive: true });
-      const safetyName = `قبل-الاستعادة-${new Date().toISOString().replace(/[:.]/g, "-")}.sqlite`;
-      fs.copyFileSync(currentPath, path.join(safetyDir, safetyName));
-      fs.copyFileSync(sourcePath, currentPath);
-      app.relaunch();
-      app.exit(0);
-      return { ok: true };
-    } catch (error) {
-      console.error("backup:restore failed", error);
-      return { ok: false, error: `تعذر استعادة قاعدة البيانات: ${error instanceof Error ? error.message : String(error)}` };
     }
   });
 }
