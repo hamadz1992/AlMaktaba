@@ -8,15 +8,55 @@ import { registerProductCreateHandler } from "./products-ipc";
 let db: Database;
 let dbPath = "";
 let mainWindow: BrowserWindow | null = null;
+let backupTimer: ReturnType<typeof setInterval> | null = null;
+let closeBackupDone = false;
+let backupSettings: { intervalMinutes: number } = { intervalMinutes: 30 };
 let session: { id: number; username: string; displayName: string; role: "partner1" | "partner2" | "admin" } | null = null;
 
 function hashPassword(password: string, salt = crypto.randomBytes(16).toString("hex")) { return `${salt}:${crypto.scryptSync(password, salt, 64).toString("hex")}`; }
 function verifyPassword(password: string, stored: string) { const [salt, expected] = stored.split(":"); if (!salt || !expected) return false; const actual = crypto.scryptSync(password, salt, 64).toString("hex"); return crypto.timingSafeEqual(Buffer.from(actual, "hex"), Buffer.from(expected, "hex")); }
-function saveDb() { fs.writeFileSync(dbPath, Buffer.from(db.export())); }
+function saveDb() { if (!db || !dbPath) return; fs.mkdirSync(path.dirname(dbPath), { recursive: true }); fs.writeFileSync(dbPath, Buffer.from(db.export())); }
 function query(sql: string, params: any[] = []) { const stmt = db.prepare(sql); stmt.bind(params); const rows: any[] = []; while (stmt.step()) rows.push(stmt.getAsObject()); stmt.free(); return rows; }
 function audit(action: string, entityType: string, entityId: number | null, details: string) { if (!session) return; db.run("INSERT INTO audit_logs(actor_id,action,entity_type,entity_id,details,created_at) VALUES(?,?,?,?,?,?)", [session.id, action, entityType, entityId, details, new Date().toISOString()]); saveDb(); }
 
+function settingsPath() { return path.join(app.getPath("userData"), "settings.json"); }
+function loadBackupSettings() {
+  try {
+    if (!fs.existsSync(settingsPath())) return;
+    const raw = JSON.parse(fs.readFileSync(settingsPath(), "utf8"));
+    const value = Number(raw?.backupIntervalMinutes);
+    if (Number.isFinite(value) && value >= 0) backupSettings.intervalMinutes = Math.min(1440, Math.floor(value));
+  } catch { /* use defaults */ }
+}
+function saveBackupSettings() {
+  fs.mkdirSync(app.getPath("userData"), { recursive: true });
+  fs.writeFileSync(settingsPath(), JSON.stringify({ backupIntervalMinutes: backupSettings.intervalMinutes }, null, 2), "utf8");
+}
+function backupDirectory() { return path.join(app.getPath("userData"), "backups"); }
+function automaticBackup(reason: string) {
+  try {
+    saveDb();
+    if (!dbPath || !fs.existsSync(dbPath)) return { ok: false, error: "قاعدة البيانات غير جاهزة" };
+    const dir = backupDirectory();
+    fs.mkdirSync(dir, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const filePath = path.join(dir, `almaktaba-${reason}-${stamp}.sqlite`);
+    fs.copyFileSync(dbPath, filePath);
+    return { ok: true, path: filePath };
+  } catch (error) {
+    console.error("automatic backup failed", error);
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+function restartBackupTimer() {
+  if (backupTimer) { clearInterval(backupTimer); backupTimer = null; }
+  const minutes = backupSettings.intervalMinutes;
+  if (minutes <= 0) return;
+  backupTimer = setInterval(() => { void automaticBackup("auto"); }, minutes * 60 * 1000);
+}
+
 async function initDb() {
+  loadBackupSettings();
   const SQL = await initSqlJs({ locateFile: (file: string) => app.isPackaged ? path.join(process.resourcesPath, "node_modules", "sql.js", "dist", file) : path.join(process.cwd(), "node_modules", "sql.js", "dist", file) });
   dbPath = path.join(app.getPath("userData"), "almaktaba.sqlite");
   db = fs.existsSync(dbPath) ? new SQL.Database(fs.readFileSync(dbPath)) : new SQL.Database();
@@ -29,6 +69,7 @@ async function initDb() {
   const count = Number(query("SELECT COUNT(*) AS c FROM users")[0]?.c ?? 0);
   if (!count) { const now = new Date().toISOString(); for (const [username, displayName, role, password] of [["partner1","أحمد","partner1","1234"],["partner2","محمد","partner2","1234"],["admin","الحساب 3","admin","1234"]]) db.run("INSERT INTO users(username,display_name,role,password_hash,created_at) VALUES(?,?,?,?,?)", [username,displayName,role,hashPassword(String(password)),now]); saveDb(); }
   saveDb();
+  restartBackupTimer();
 }
 
 function visibleTransactions() { if (!session) return []; if (session.role === "admin") return query(`SELECT t.*,u.display_name AS created_by_name FROM transactions t JOIN users u ON u.id=t.created_by WHERE t.visibility='shop' OR (t.visibility='admin_private' AND t.created_by=?) ORDER BY t.id DESC`, [session.id]); return query(`SELECT t.*,u.display_name AS created_by_name FROM transactions t JOIN users u ON u.id=t.created_by WHERE t.visibility='shop' AND u.role!='admin' ORDER BY t.id DESC`); }
@@ -55,10 +96,24 @@ ipcMain.handle("products:delete",(_event,id)=>{if(!session)return{ok:false,error
 
 registerProductCreateHandler(ipcMain, () => db, () => session ? { id: session.id } : null, saveDb, query);
 
-ipcMain.handle("system:backup",async()=>{if(!session||session.role!=="admin")return{ok:false,error:"هذه العملية غير متاحة"};const result=await dialog.showSaveDialog({title:"حفظ نسخة احتياطية",defaultPath:`almaktaba-${new Date().toISOString().slice(0,10)}.sqlite`,filters:[{name:"SQLite",extensions:["sqlite"]}]});if(result.canceled||!result.filePath)return{ok:false};fs.copyFileSync(dbPath,result.filePath);return{ok:true,path:result.filePath};});
+ipcMain.handle("system:backup-settings",()=>({ok:true,intervalMinutes:backupSettings.intervalMinutes,backupDir:backupDirectory()}));
+ipcMain.handle("system:set-backup-settings",(_event,{intervalMinutes})=>{if(!session||session.role!=="admin")return{ok:false,error:"هذه العملية متاحة للحساب الإداري فقط"};const value=Number(intervalMinutes);if(!Number.isFinite(value)||value<0||value>1440)return{ok:false,error:"اختر مدة صحيحة بين 0 و1440 دقيقة"};backupSettings.intervalMinutes=Math.floor(value);saveBackupSettings();restartBackupTimer();return{ok:true,intervalMinutes:backupSettings.intervalMinutes,backupDir:backupDirectory()};});
+ipcMain.handle("system:backup-now",()=>{if(!session||session.role!=="admin")return{ok:false,error:"هذه العملية غير متاحة"};return automaticBackup("manual");});
+ipcMain.handle("system:backup",async()=>{if(!session||session.role!=="admin")return{ok:false,error:"هذه العملية غير متاحة"};saveDb();const result=await dialog.showSaveDialog({title:"حفظ نسخة احتياطية",defaultPath:`almaktaba-${new Date().toISOString().slice(0,10)}.sqlite`,filters:[{name:"SQLite",extensions:["sqlite"]}]});if(result.canceled||!result.filePath)return{ok:false};fs.copyFileSync(dbPath,result.filePath);return{ok:true,path:result.filePath};});
 
 function addLogoutControl(){mainWindow?.webContents.executeJavaScript(`(()=>{const old=document.getElementById('almaktaba-logout');if(old)old.remove();const user=document.querySelector('.top-user');if(!user)return;const b=document.createElement('button');b.id='almaktaba-logout';b.className='logout-btn';b.type='button';b.textContent='خروج';b.title='تسجيل الخروج';b.onclick=async()=>{b.disabled=true;try{await window.almaktaba.logout();window.location.reload()}catch(e){b.disabled=false}};user.appendChild(b)})()`).catch(()=>{});}
 
-function createWindow(){Menu.setApplicationMenu(null);mainWindow=new BrowserWindow({width:1150,height:720,minWidth:900,minHeight:620,frame:false,title:"المكتبة",autoHideMenuBar:true,webPreferences:{preload:path.join(__dirname,"preload.js"),contextIsolation:true,nodeIntegration:false}});mainWindow.webContents.on("did-finish-load",()=>addLogoutControl());if(!app.isPackaged)mainWindow.loadURL("http://localhost:5173");else mainWindow.loadFile(path.join(__dirname,"../../dist/index.html"));}
+function createWindow(){
+  Menu.setApplicationMenu(null);
+  mainWindow=new BrowserWindow({width:1150,height:720,minWidth:900,minHeight:620,frame:false,title:"المكتبة",autoHideMenuBar:true,webPreferences:{preload:path.join(__dirname,"preload.js"),contextIsolation:true,nodeIntegration:false}});
+  mainWindow.on("close",()=>{
+    if (!closeBackupDone) { closeBackupDone = true; void automaticBackup("close"); }
+  });
+  mainWindow.on("closed",()=>{mainWindow=null;});
+  mainWindow.webContents.on("did-finish-load",()=>addLogoutControl());
+  if(!app.isPackaged) mainWindow.loadURL("http://localhost:5173"); else mainWindow.loadFile(path.join(__dirname,"../../dist/index.html"));
+}
+
 app.whenReady().then(async()=>{await initDb();createWindow();});
+app.on("before-quit",()=>{if(!closeBackupDone){closeBackupDone=true;void automaticBackup("quit");}if(backupTimer)clearInterval(backupTimer);});
 app.on("window-all-closed",()=>{if(process.platform!=="darwin")app.quit();});
