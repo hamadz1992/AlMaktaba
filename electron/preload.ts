@@ -20,14 +20,22 @@ contextBridge.exposeInMainWorld("almaktaba", {
   backup: () => ipcRenderer.invoke("system:backup")
 });
 
+function parseDetails(raw: unknown): any {
+  if (!raw) return null;
+  try { return typeof raw === "string" ? JSON.parse(raw) : raw; } catch { return null; }
+}
+function fmtMoney(value: unknown): string { return value == null || value === "" ? "—" : `${Number(value).toLocaleString("ar-DZ")} دج`; }
+function changeLine(label: string, before: unknown, after: unknown): string {
+  const a = before == null || before === "" ? "—" : String(before);
+  const b = after == null || after === "" ? "—" : String(after);
+  return `${label}: ${a} ← ${b}`;
+}
+
 async function showAuditModal() {
   document.querySelector("[data-almaktaba-audit-modal]")?.remove();
   try {
     const result = await ipcRenderer.invoke("audit:transactions");
-    if (!result?.ok) {
-      window.alert(result?.error || "تعذر فتح سجل التعديلات");
-      return;
-    }
+    if (!result?.ok) { window.alert(result?.error || "تعذر فتح سجل التعديلات"); return; }
 
     const rows = Array.isArray(result.rows) ? result.rows : [];
     const modal = document.createElement("div");
@@ -36,14 +44,13 @@ async function showAuditModal() {
     modal.style.cssText = "position:fixed;inset:0;background:rgba(20,18,28,.48);z-index:999999;display:grid;place-items:center;padding:24px;backdrop-filter:blur(4px)";
 
     const card = document.createElement("section");
-    card.style.cssText = "width:min(1100px,96vw);max-height:86vh;overflow:auto;background:#fff;border-radius:18px;padding:20px;box-shadow:0 24px 70px rgba(0,0,0,.24);font-family:Segoe UI,Tahoma,Arial,sans-serif;color:#17202a";
+    card.style.cssText = "width:min(1180px,96vw);max-height:86vh;overflow:auto;background:#fff;border-radius:18px;padding:20px;box-shadow:0 24px 70px rgba(0,0,0,.24);font-family:Segoe UI,Tahoma,Arial,sans-serif;color:#17202a";
 
     const title = document.createElement("div");
     title.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px";
     const heading = document.createElement("div");
-    heading.innerHTML = '<h2 style="margin:0 0 3px">سجل التعديلات</h2><span style="color:#77808d;font-size:12px">تغييرات المعاملات فقط</span>';
+    heading.innerHTML = '<h2 style="margin:0 0 3px">سجل التعديلات</h2><span style="color:#77808d;font-size:12px">تغييرات المعاملات فقط — القيم القديمة والجديدة</span>';
     title.appendChild(heading);
-
     const close = document.createElement("button");
     close.type = "button";
     close.textContent = "إغلاق";
@@ -55,24 +62,48 @@ async function showAuditModal() {
     const tableWrap = document.createElement("div");
     tableWrap.style.cssText = "overflow:auto;border:1px solid #edf0f4;border-radius:10px";
     const table = document.createElement("table");
-    table.style.cssText = "width:100%;border-collapse:collapse;min-width:760px";
-    table.innerHTML = '<thead><tr style="background:#fafbfc"><th style="padding:9px;text-align:right">التاريخ</th><th style="padding:9px;text-align:right">المستخدم</th><th style="padding:9px;text-align:right">نوع العملية</th><th style="padding:9px;text-align:right">المبلغ</th><th style="padding:9px;text-align:right">التبرير</th></tr></thead>';
+    table.style.cssText = "width:100%;border-collapse:collapse;min-width:980px";
+    table.innerHTML = '<thead><tr style="background:#fafbfc"><th style="padding:9px;text-align:right">التاريخ</th><th style="padding:9px;text-align:right">المستخدم</th><th style="padding:9px;text-align:right">نوع العملية</th><th style="padding:9px;text-align:right">تفاصيل التعديل</th><th style="padding:9px;text-align:right">السبب</th></tr></thead>';
 
     const tbody = document.createElement("tbody");
     const labels: Record<string,string> = { create: "إضافة معاملة", update: "تعديل معاملة", void: "إلغاء معاملة" };
     rows.forEach((row: any) => {
       const tr = document.createElement("tr");
+      const details = parseDetails(row.details);
+      const action = labels[row.action] || row.action;
+      let changes = "—";
+      let reason = "—";
+
+      if (row.action === "update" && details?.previous && details?.newValues) {
+        const before = details.previous;
+        const after = details.newValues;
+        changes = [
+          changeLine("نوع العملية", before.type, after.type),
+          `المبلغ: ${fmtMoney(before.amount)} ← ${fmtMoney(after.amount)}`,
+          changeLine("التبرير", before.reason, after.reason)
+        ].join(" | ");
+      } else if (row.action === "create") {
+        changes = [
+          `نوع العملية: ${details?.type ?? row.type ?? "—"}`,
+          `المبلغ: ${fmtMoney(details?.amount ?? row.amount)}`,
+          `التبرير: ${details?.reason ?? row.reason ?? "—"}`
+        ].join(" | ");
+      } else if (row.action === "void") {
+        changes = `المبلغ: ${fmtMoney(row.amount)} | التبرير: ${row.reason || "—"}`;
+        reason = row.details || row.void_reason || "—";
+      }
+
       const values = [
         new Date(row.created_at).toLocaleString("ar-DZ"),
         row.actor_name || row.actor_username || "—",
-        labels[row.action] || row.action,
-        row.amount == null ? "—" : `${Number(row.amount).toLocaleString("ar-DZ")} دج`,
-        row.reason || row.void_reason || row.details || "—"
+        action,
+        changes,
+        reason
       ];
       values.forEach(value => {
         const td = document.createElement("td");
         td.textContent = String(value);
-        td.style.cssText = "padding:9px;border-top:1px solid #edf0f4;white-space:nowrap;font-size:13px";
+        td.style.cssText = "padding:10px;border-top:1px solid #edf0f4;vertical-align:top;font-size:13px;line-height:1.7;white-space:normal";
         tr.appendChild(td);
       });
       tbody.appendChild(tr);
@@ -102,20 +133,14 @@ async function ensureAdminAuditButton() {
   const nav = document.querySelector<HTMLElement>(".main-nav");
   if (!nav) return;
   const session = await ipcRenderer.invoke("auth:session");
-  if (!session || session.role !== "admin") {
-    nav.querySelector("[data-audit-nav]")?.remove();
-    return;
-  }
-
+  if (!session || session.role !== "admin") { nav.querySelector("[data-audit-nav]")?.remove(); return; }
   if (nav.querySelector("[data-audit-nav]")) return;
-
   const button = document.createElement("button");
   button.className = "nav-item";
   button.type = "button";
   button.dataset.auditNav = "true";
   button.innerHTML = '<span class="nav-icon">◷</span><span>سجل التعديلات</span>';
   button.addEventListener("click", () => { void showAuditModal(); });
-
   const settings = Array.from(nav.querySelectorAll("button")).find((b) => b.textContent?.includes("الإعدادات"));
   if (settings) nav.insertBefore(button, settings); else nav.appendChild(button);
 }
@@ -124,13 +149,8 @@ function installAdminAuditView() {
   document.addEventListener("click", (event) => {
     const target = event.target as HTMLElement | null;
     const button = target?.closest<HTMLElement>("[data-audit-nav]");
-    if (button) {
-      event.preventDefault();
-      event.stopPropagation();
-      void showAuditModal();
-    }
+    if (button) { event.preventDefault(); event.stopPropagation(); void showAuditModal(); }
   }, true);
-
   const observer = new MutationObserver(() => { void ensureAdminAuditButton(); });
   observer.observe(document.documentElement, { childList: true, subtree: true });
   void ensureAdminAuditButton();
