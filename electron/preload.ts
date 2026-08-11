@@ -17,7 +17,10 @@ contextBridge.exposeInMainWorld("almaktaba", {
   createProduct: (input: unknown) => ipcRenderer.invoke("products:create-safe", input),
   updateProduct: (id: number, input: unknown) => ipcRenderer.invoke("products:update", { id, input }),
   deleteProduct: (id: number) => ipcRenderer.invoke("products:delete", id),
-  backup: () => ipcRenderer.invoke("system:backup")
+  backup: () => ipcRenderer.invoke("system:backup"),
+  backupNow: () => ipcRenderer.invoke("system:backup-now"),
+  getBackupSettings: () => ipcRenderer.invoke("system:backup-settings"),
+  setBackupInterval: (intervalMinutes: number) => ipcRenderer.invoke("system:set-backup-settings", { intervalMinutes })
 });
 
 function parseDetails(raw: unknown): any {
