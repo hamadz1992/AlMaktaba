@@ -94,7 +94,6 @@ async function initDb() {
     saveDb();
   }
 
-  // تحديث أسماء الحسابات الموجودة مسبقًا أيضًا.
   db.run("UPDATE users SET display_name='أحمد' WHERE role='partner1'");
   db.run("UPDATE users SET display_name='محمد' WHERE role='partner2'");
   saveDb();
@@ -161,10 +160,12 @@ ipcMain.handle("transactions:update", (_event, { id, input }) => {
   if (!type || !reason || !Number.isFinite(amount) || amount <= 0) return { ok: false, error: "نوع العملية والمبلغ والتبرير حقول إجبارية" };
   const beneficiary = String(input?.beneficiary || "").trim();
   const notes = String(input?.notes || "").trim();
-  const visibility = session.role === "admin" ? "admin_private" : t.visibility;
+  // تعديل الحساب السري يبقى خاصًا، وتعديل أحمد/محمد يبقى عملية مشتركة.
+  // الحساب السري يستطيع تعديل عمليات أحمد ومحمد دون تغيير مستوى ظهورها.
+  const visibility = String(t.visibility) === "admin_private" ? "admin_private" : "shop";
   const now = new Date().toISOString();
   db.run("UPDATE transactions SET type=?,amount=?,reason=?,beneficiary=?,notes=?,visibility=?,updated_at=? WHERE id=?", [type, amount, reason, beneficiary, notes, visibility, now, id]);
-  audit("update", "transaction", id, JSON.stringify({ previous: t, newValues: input }));
+  audit("update", "transaction", id, JSON.stringify({ previous: t, newValues: { type, amount, reason, beneficiary, notes, visibility } }));
   saveDb();
   return { ok: true };
 });
