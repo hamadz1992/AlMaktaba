@@ -8,6 +8,10 @@ declare global {
       createTransaction(input: any): Promise<any>;
       updateTransaction(id: number, input: any): Promise<any>;
       voidTransaction(id: number, reason: string): Promise<any>;
+      listProducts(): Promise<any[]>;
+      createProduct(input: any): Promise<any>;
+      updateProduct(id: number, input: any): Promise<any>;
+      deleteProduct(id: number): Promise<any>;
       backup(): Promise<any>;
       changeOwnPassword(oldPassword: string, newPassword: string): Promise<any>;
     };
