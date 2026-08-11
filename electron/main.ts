@@ -27,7 +27,6 @@ async function initDb() {
   `);
   const count = Number(query("SELECT COUNT(*) AS c FROM users")[0]?.c ?? 0);
   if (!count) { const now = new Date().toISOString(); for (const [username, displayName, role, password] of [["partner1","أحمد","partner1","1234"],["partner2","محمد","partner2","1234"],["admin","الحساب 3","admin","1234"]]) db.run("INSERT INTO users(username,display_name,role,password_hash,created_at) VALUES(?,?,?,?,?)", [username,displayName,role,hashPassword(String(password)),now]); saveDb(); }
-  db.run("UPDATE users SET display_name='أحمد' WHERE role='partner1'"); db.run("UPDATE users SET display_name='محمد' WHERE role='partner2'"); saveDb();
 }
 
 function visibleTransactions() { if (!session) return []; if (session.role === "admin") return query(`SELECT t.*,u.display_name AS created_by_name FROM transactions t JOIN users u ON u.id=t.created_by WHERE t.visibility='shop' OR (t.visibility='admin_private' AND t.created_by=?) ORDER BY t.id DESC`, [session.id]); return query(`SELECT t.*,u.display_name AS created_by_name FROM transactions t JOIN users u ON u.id=t.created_by WHERE t.visibility='shop' AND u.role!='admin' ORDER BY t.id DESC`); }
