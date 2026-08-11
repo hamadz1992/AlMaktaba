@@ -9,6 +9,7 @@ declare global {
       minimizeWindow(): Promise<any>;
       closeWindow(): Promise<any>;
       listTransactions(): Promise<any[]>;
+      listTransactionAudit(): Promise<{ok:boolean;rows?:any[];error?:string}>;
       createTransaction(input: any): Promise<any>;
       updateTransaction(id: number, input: any): Promise<any>;
       voidTransaction(id: number, reason: string): Promise<any>;
