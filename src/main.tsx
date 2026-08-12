@@ -6,10 +6,10 @@ import "./merge.css";
 type User={id:number;username:string;displayName:string;role:"partner1"|"partner2"|"admin"};
 type Tx={id:number;type:string;amount:number;reason:string;beneficiary:string;notes:string;visibility:string;created_by:number;created_by_name:string;created_at:string;updated_at:string|null;status:string};
 type Product={id:number;name:string;sku:string;unit:string;purchase_price:number;sale_price:number;quantity:number;min_quantity:number;active:number;created_at:string;updated_at:string|null};
-type Section="summary"|"transactions"|"products"|"trade"|"debts"|"reports"|"invoices"|"backup"|"settings";
+type Section="summary"|"transactions"|"products"|"trade"|"debts"|"reports"|"invoices"|"capital"|"settings";
 const SAVED_USERNAME_KEY="almaktaba_saved_username";
 const types=["شراء","بيع","مصروف","سحب","إيداع","دين","تسديد دين","أخرى"];
-const navItems:{id:Section;label:string;icon:string}[]=[{id:"summary",label:"الملخص",icon:"⌂"},{id:"transactions",label:"المعاملات",icon:"↔"},{id:"products",label:"المنتجات",icon:"▦"},{id:"trade",label:"المبيعات والمشتريات",icon:"▣"},{id:"debts",label:"الديون والمستحقات",icon:"◫"},{id:"reports",label:"التقارير",icon:"▥"},{id:"invoices",label:"الفواتير والتصدير",icon:"▧"},{id:"backup",label:"النسخ الاحتياطي",icon:"◈"},{id:"settings",label:"الإعدادات",icon:"⚙"}];
+const navItems:{id:Section;label:string;icon:string}[]=[{id:"summary",label:"الملخص",icon:"⌂"},{id:"transactions",label:"المعاملات",icon:"↔"},{id:"products",label:"المنتجات",icon:"▦"},{id:"trade",label:"المبيعات والمشتريات",icon:"▣"},{id:"debts",label:"الديون والمستحقات",icon:"◫"},{id:"reports",label:"التقارير",icon:"▥"},{id:"invoices",label:"الفواتير والتصدير",icon:"▧"},{id:"capital",label:"\u0631\u0623\u0633 \u0627\u0644\u0645\u0627\u0644 \u0648\u0627\u0644\u062a\u0633\u0648\u064a\u0629",icon:"?"},{id:"settings",label:"الإعدادات",icon:"⚙"}];
 function money(v:number){return `${Number(v||0).toLocaleString("ar-DZ")} دج`}
 function excel(filename:string,headers:string[],rows:string[][]){const esc=(v:string)=>String(v??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");const html=`<html><head><meta charset="UTF-8"></head><body><table border="1"><tr>${headers.map(h=>`<th>${esc(h)}</th>`).join("")}</tr>${rows.map(r=>`<tr>${r.map(v=>`<td>${esc(v)}</td>`).join("")}</tr>`).join("")}</table></body></html>`;const blob=new Blob(["\ufeff",html],{type:"application/vnd.ms-excel;charset=utf-8"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),500)}
 
@@ -32,7 +32,7 @@ function App(){
  if(!user)return <div className="login-page"><button type="button" className="login-close" title="إغلاق البرنامج" aria-label="إغلاق البرنامج" onClick={()=>window.almaktaba.closeWindow()}>×</button><form className="login-card" onSubmit={doLogin}><div className="logo">المكتبة</div><label>اسم المستخدم</label><input value={login.username} onChange={e=>setLogin({...login,username:e.target.value})} autoFocus/><label>كلمة المرور</label><input type="password" value={login.password} onChange={e=>setLogin({...login,password:e.target.value})}/>{error&&<div className="error">{error}</div>}<button className="primary login-button">دخول</button></form></div>;
  return <div className="app"><header className="topbar"><div className="window-controls"><button className="window-btn minimize" onClick={()=>window.almaktaba.minimizeWindow()}>−</button><button className="window-btn close" onClick={()=>window.almaktaba.closeWindow()}>×</button></div><button className="app-badge" onClick={()=>setSection("summary")}><span>المكتبة</span><span className="store-icon">▦</span></button><div className="top-user"><div className="top-user-text"><b>{user.role==="admin"?"الحساب 3":user.displayName}</b></div><button className="info-btn" onClick={()=>setSection("settings")}>i</button><button className="logout-btn" onClick={doLogout}>تسجيل الخروج</button><button className="menu-btn" onClick={()=>setNavOpen(v=>!v)}>☰</button></div></header>
  {navOpen&&<nav className="main-nav">{navItems.map(i=><button key={i.id} className={section===i.id?"nav-item active":"nav-item"} onClick={()=>setSection(i.id)}><span className="nav-icon">{i.icon}</span><span>{i.label}</span></button>)}</nav>}
- <main className="content">{section==="summary"?<Summary totals={totals} txs={txs} setSection={setSection}/>:section==="transactions"?<Transactions user={user} txs={txs} filtered={filtered} form={form} setForm={setForm} editing={editing} filter={filter} setFilter={setFilter} error={error} submit={submit} reset={()=>{setEditing(null);setError("");setForm({type:"شراء",amount:"",reason:"",visibility:"shop"})}} edit={edit} cancelTx={cancelTx}/>:section==="products"?<Products products={products} refresh={refreshProducts}/>:section==="trade"?<TradeView txs={txs} products={products} onSaved={refresh}/>:section==="debts"?<Debts txs={txs} setSection={setSection}/>:section==="reports"?<Reports txs={txs} products={products}/>:section==="invoices"?<Invoices txs={txs} products={products}/>:section==="backup"?<Backup user={user}/>:<Settings user={user} onPassword={()=>setShowPassword(true)} onUserUpdated={setUser}/>}</main>
+ <main className="content">{section==="summary"?<Summary totals={totals} txs={txs} setSection={setSection}/>:section==="transactions"?<Transactions user={user} txs={txs} filtered={filtered} form={form} setForm={setForm} editing={editing} filter={filter} setFilter={setFilter} error={error} submit={submit} reset={()=>{setEditing(null);setError("");setForm({type:"شراء",amount:"",reason:"",visibility:"shop"})}} edit={edit} cancelTx={cancelTx}/>:section==="products"?<Products products={products} refresh={refreshProducts}/>:section==="trade"?<TradeView txs={txs} products={products} onSaved={refresh}/>:section==="debts"?<Debts txs={txs} setSection={setSection}/>:section==="reports"?<Reports txs={txs} products={products}/>:section==="invoices"?<Invoices txs={txs} products={products}/>:section==="capital"?<CapitalSettlement user={user}/>:<Settings user={user} onPassword={()=>setShowPassword(true)} onUserUpdated={setUser}/>}</main>
  {showPassword&&<div className="modal"><form className="modal-card" onSubmit={changePassword}><h3>تغيير كلمة المرور</h3><input type="password" placeholder="كلمة المرور الحالية" value={passwords.old} onChange={e=>setPasswords({...passwords,old:e.target.value})}/><input type="password" placeholder="كلمة المرور الجديدة" value={passwords.next} onChange={e=>setPasswords({...passwords,next:e.target.value})}/><button className="primary">حفظ</button><button type="button" onClick={()=>setShowPassword(false)}>إلغاء</button></form></div>}</div>
 }
 
@@ -58,14 +58,234 @@ function Reports({txs,products}:{txs:Tx[];products:Product[]}){const a=txs.filte
 function Invoices({txs,products}:{txs:Tx[];products:Product[]}){const exportTx=()=>excel(`almaktaba-transactions-${Date.now()}.xls`,["التاريخ","النوع","المبلغ","التبرير","الطرف","المسجل","الحالة"],txs.map(t=>[new Date(t.created_at).toLocaleString("ar-DZ"),t.type,String(t.amount),t.reason,t.beneficiary||"",t.created_by_name,t.status]));const exportProducts=()=>excel(`almaktaba-products-${Date.now()}.xls`,["المنتج","الرمز","الوحدة","سعر الشراء","سعر البيع","الكمية","حد التنبيه"],products.map(p=>[p.name,p.sku||"",p.unit,String(p.purchase_price),String(p.sale_price),String(p.quantity),String(p.min_quantity)]));return <><div className="page-heading"><h1>الفواتير والتصدير</h1></div><section className="export-grid"><div className="card export-card"><div className="export-icon">↔</div><h2>المعاملات</h2><button className="primary" onClick={exportTx}>تصدير Excel</button></div><div className="card export-card"><div className="export-icon">▦</div><h2>المنتجات</h2><button className="primary" onClick={exportProducts}>تصدير Excel</button></div></section><section className="card"><div className="card-head"><h2>الفواتير</h2></div>{txs.filter(t=>t.type==="بيع"&&t.status==="active").slice(0,20).map(t=><div className="invoice-row" key={t.id}><div><b>فاتورة #{t.id}</b><span>{new Date(t.created_at).toLocaleString("ar-DZ")} — {t.reason}</span></div><strong>{money(t.amount)}</strong><button onClick={()=>printInvoice(t)}>طباعة</button></div>)}</section></>}
 function printInvoice(t:Tx){const w=window.open("","_blank","width=760,height=800");if(!w)return;w.document.write(`<html dir="rtl"><head><title>فاتورة #${t.id}</title><style>body{font-family:Arial;padding:40px}.box{border:1px solid #ddd;padding:20px;border-radius:12px}.row{display:flex;justify-content:space-between;padding:10px;border-bottom:1px solid #eee}.total{font-size:22px;font-weight:bold;margin-top:15px}</style></head><body><h1>المكتبة</h1><p>فاتورة بيع رقم ${t.id}</p><div class="box"><div class="row"><span>التاريخ</span><span>${new Date(t.created_at).toLocaleString("ar-DZ")}</span></div><div class="row"><span>البيان</span><span>${t.reason}</span></div><div class="row"><span>الزبون</span><span>${t.beneficiary||"—"}</span></div><div class="total">الإجمالي: ${money(t.amount)}</div></div><script>window.onload=()=>window.print()</script></body></html>`);w.document.close()}
 
-function Backup({user}:{user:User}){
- const[busy,setBusy]=useState(false);const[interval,setIntervalValue]=useState("30");const[dir,setDir]=useState("");const[status,setStatus]=useState("");
- useEffect(()=>{window.almaktaba.getBackupSettings().then(r=>{if(r?.ok){setIntervalValue(String(r.intervalMinutes));setDir(r.backupDir||"")}})},[]);
- async function saveSchedule(){if(user.role!=="admin")return;setStatus("");const r=await window.almaktaba.setBackupInterval(Number(interval));if(!r.ok)return setStatus(r.error||"تعذر حفظ الإعداد");setDir(r.backupDir||dir);setStatus(Number(interval)===0?"تم تعطيل النسخ الدوري. سيبقى الحفظ والنسخ الاحتياطي عند إغلاق البرنامج فعالاً.":`تم حفظ النسخ كل ${interval} دقيقة.`)}
- async function runNow(){setBusy(true);setStatus("");try{const r=await window.almaktaba.backupNow();if(r?.ok)setStatus("تم إنشاء نسخة احتياطية الآن.");else setStatus(r?.error||"تعذر إنشاء النسخة الاحتياطية")}finally{setBusy(false)}}
- async function runNamed(){setBusy(true);setStatus("");try{const r=await window.almaktaba.backup();if(r?.ok)setStatus("تم حفظ النسخة الاحتياطية.")}finally{setBusy(false)}}
- return <><div className="page-heading"><h1>النسخ الاحتياطي</h1></div><section className="card backup-panel"><div className="coming-icon">◈</div><h2>حماية بيانات المكتبة</h2><p>يتم حفظ قاعدة البيانات تلقائياً حسب المدة المحددة، وعند إغلاق البرنامج يتم حفظ البيانات وإنشاء نسخة احتياطية ثم يغلق البرنامج.</p><div className="backup-settings-row"><label>النسخ الاحتياطي الدوري</label><select disabled={user.role!=="admin"} value={interval} onChange={e=>setIntervalValue(e.target.value)}><option value="0">تعطيل النسخ الدوري</option><option value="5">كل 5 دقائق</option><option value="10">كل 10 دقائق</option><option value="15">كل 15 دقيقة</option><option value="30">كل 30 دقيقة</option><option value="60">كل ساعة</option><option value="120">كل ساعتين</option><option value="360">كل 6 ساعات</option><option value="720">كل 12 ساعة</option><option value="1440">كل 24 ساعة</option></select>{user.role==="admin"&&<button className="primary" onClick={saveSchedule}>حفظ المدة</button>}</div><div className="backup-actions"><button className="primary" onClick={runNow} disabled={busy||user.role!=="admin"}>{busy?"جاري الحفظ...":"نسخ احتياطي الآن"}</button><button onClick={runNamed} disabled={busy||user.role!=="admin"}>حفظ نسخة باسم...</button></div>{dir&&<div className="backup-path"><b>مجلد النسخ التلقائية:</b><span>{dir}</span></div>}{status&&<div className="success">{status}</div>}</section></>}
 
-function Settings({user,onPassword,onUserUpdated}:{user:User;onPassword:()=>void;onUserUpdated:(u:User)=>void}){const[form,setForm]=useState({username:user.username,displayName:user.displayName});const[saving,setSaving]=useState(false);const[error,setError]=useState("");useEffect(()=>setForm({username:user.username,displayName:user.displayName}),[user]);async function save(e:React.FormEvent){e.preventDefault();setSaving(true);setError("");const r=await window.almaktaba.updateProfile(form.username,form.displayName);setSaving(false);if(!r.ok)return setError(r.error);onUserUpdated(r.user);if(r.user.role!=="admin")localStorage.setItem(SAVED_USERNAME_KEY,r.user.username);alert("تم حفظ التعديلات")}return <><div className="page-heading"><h1>الإعدادات</h1></div><section className="settings-grid"><div className="card settings-account"><div className="card-head"><h2>بيانات الحساب</h2></div><form onSubmit={save} className="settings-form"><div><label>اسم المستخدم</label><input value={form.username} onChange={e=>setForm({...form,username:e.target.value})}/></div><div><label>الاسم الظاهر</label><input value={form.displayName} onChange={e=>setForm({...form,displayName:e.target.value})}/></div><button className="primary" disabled={saving}>{saving?"جاري الحفظ...":"حفظ التعديلات"}</button></form>{error&&<div className="error">{error}</div>}<div className="password-setting"><b>كلمة المرور</b><button onClick={onPassword}>تغيير كلمة المرور</button></div></div><div className="card"><h2>النظام</h2><div className="setting-row"><span>التطبيق</span><strong>المكتبة</strong></div><div className="setting-row"><span>الوضع</span><strong>بدون إنترنت</strong></div><div className="setting-row"><span>البيانات</span><strong>SQLite</strong></div><div className="setting-row"><span>النسخ الاحتياطي</span><button onClick={()=>window.almaktaba.getBackupSettings().then(r=>alert(r?.ok?`النسخ كل ${r.intervalMinutes} دقيقة`:(r?.error||"غير متاح")))}>عرض الإعداد</button></div></div></section></>}
+
+
+function CapitalSettlement({user}:{user:User}){
+const[year,setYear]=useState(String(new Date().getFullYear()));
+const[capital,setCapital]=useState({partner1:"0",partner2:"0"});
+const[settlement,setSettlement]=useState<any>(null);
+const[error,setError]=useState("");
+const[notice,setNotice]=useState("");
+
+async function loadCapital(){
+const r=await window.almaktaba.getPartnerCapital();
+if(!r.ok){
+setError(r.error||"\u062a\u0639\u0630\u0631 \u062a\u062d\u0645\u064a\u0644 \u0631\u0623\u0633 \u0627\u0644\u0645\u0627\u0644");
+return;
+}
+const rows=Array.isArray(r.capital)?r.capital:[];
+const ahmed=rows.find((x:any)=>x.partner_role==="partner1");
+const mohamed=rows.find((x:any)=>x.partner_role==="partner2");
+setCapital({
+partner1:String(ahmed?.amount??0),
+partner2:String(mohamed?.amount??0)
+});
+}
+
+async function calculate(){
+setError("");
+const r=await window.almaktaba.getAnnualSettlement(Number(year));
+if(!r.ok){
+setError(r.error||"\u062a\u0639\u0630\u0631 \u062d\u0633\u0627\u0628 \u0627\u0644\u062a\u0633\u0648\u064a\u0629");
+return;
+}
+setSettlement(r);
+}
+
+useEffect(()=>{
+void loadCapital();
+void calculate();
+},[]);
+
+async function save(role:"partner1"|"partner2"){
+if(user.role!=="admin")return;
+
+setError("");
+setNotice("");
+
+const amount=Number(capital[role]);
+
+if(!Number.isFinite(amount)||amount<0){
+setError("\u0623\u062f\u062e\u0644 \u0645\u0628\u0644\u063a\u064b\u0627 \u0635\u062d\u064a\u062d\u064b\u0627");
+return;
+}
+
+const r=await window.almaktaba.setPartnerCapital(role,amount);
+
+if(!r.ok){
+setError(r.error||"\u062a\u0639\u0630\u0631 \u062d\u0641\u0638 \u0631\u0623\u0633 \u0627\u0644\u0645\u0627\u0644");
+return;
+}
+
+setNotice("\u062a\u0645 \u062d\u0641\u0638 \u0631\u0623\u0633 \u0627\u0644\u0645\u0627\u0644 \u0628\u0646\u062c\u0627\u062d");
+await calculate();
+}
+
+const totalCapital=
+Number(capital.partner1||0)+
+Number(capital.partner2||0);
+
+const ratioAhmed=
+totalCapital>0?Number(capital.partner1)/totalCapital:0;
+
+const ratioMohamed=
+totalCapital>0?Number(capital.partner2)/totalCapital:0;
+
+return <>
+<div className="page-heading">
+<h1>{"\u0631\u0623\u0633 \u0627\u0644\u0645\u0627\u0644 \u0648\u0627\u0644\u062a\u0633\u0648\u064a\u0629"}</h1>
+</div>
+
+<section className="settings-grid">
+
+<div className="card">
+<div className="card-head">
+<h2>{"\u0631\u0623\u0633 \u0627\u0644\u0645\u0627\u0644"}</h2>
+</div>
+
+<div className="setting-row">
+<span>{"\u0623\u062d\u0645\u062f \u2014 \u0645\u0628\u0644\u063a \u0627\u0644\u062f\u062e\u0648\u0644"}</span>
+<input
+type="number"
+min="0"
+step="0.01"
+disabled={user.role!=="admin"}
+value={capital.partner1}
+onChange={e=>setCapital({...capital,partner1:e.target.value})}
+/>
+</div>
+
+<div className="setting-row">
+<span>{"\u0646\u0633\u0628\u0629 \u0623\u062d\u0645\u062f"}</span>
+<strong>{(ratioAhmed*100).toFixed(2)}%</strong>
+</div>
+
+<div className="setting-row">
+<span>{"\u0645\u062d\u0645\u062f \u2014 \u0645\u0628\u0644\u063a \u0627\u0644\u062f\u062e\u0648\u0644"}</span>
+<input
+type="number"
+min="0"
+step="0.01"
+disabled={user.role!=="admin"}
+value={capital.partner2}
+onChange={e=>setCapital({...capital,partner2:e.target.value})}
+/>
+</div>
+
+<div className="setting-row">
+<span>{"\u0646\u0633\u0628\u0629 \u0645\u062d\u0645\u062f"}</span>
+<strong>{(ratioMohamed*100).toFixed(2)}%</strong>
+</div>
+
+<div className="setting-row">
+<span>{"\u0625\u062c\u0645\u0627\u0644\u064a \u0631\u0623\u0633 \u0627\u0644\u0645\u0627\u0644"}</span>
+<strong>{money(totalCapital)}</strong>
+</div>
+
+{user.role==="admin"&&
+<div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+<button className="primary" onClick={()=>save("partner1")}>
+{"\u062d\u0641\u0638 \u0645\u0628\u0644\u063a \u0623\u062d\u0645\u062f"}
+</button>
+
+<button className="primary" onClick={()=>save("partner2")}>
+{"\u062d\u0641\u0638 \u0645\u0628\u0644\u063a \u0645\u062d\u0645\u062f"}
+</button>
+</div>
+}
+
+{notice&&<div className="success">{notice}</div>}
+{error&&<div className="error">{error}</div>}
+</div>
+
+<div className="card">
+<div className="card-head">
+<h2>{"\u0627\u0644\u062a\u0633\u0648\u064a\u0629 \u0627\u0644\u0633\u0646\u0648\u064a\u0629"}</h2>
+</div>
+
+<div className="setting-row">
+<span>{"\u0627\u0644\u0633\u0646\u0629"}</span>
+<input
+type="number"
+min="2000"
+max="2100"
+value={year}
+onChange={e=>setYear(e.target.value)}
+/>
+</div>
+
+<button className="primary" onClick={calculate}>
+{"\u062d\u0633\u0627\u0628 \u0627\u0644\u062a\u0633\u0648\u064a\u0629"}
+</button>
+</div>
+
+</section>
+
+{settlement&&
+<section className="card">
+
+<div className="card-head">
+<h2>{"\u062a\u0633\u0648\u064a\u0629 \u0633\u0646\u0629"} {settlement.year}</h2>
+</div>
+
+<div className="setting-row">
+<span>{"\u0627\u0644\u0645\u0628\u064a\u0639\u0627\u062a"}</span>
+<strong>{money(settlement.totals.sales)}</strong>
+</div>
+
+<div className="setting-row">
+<span>{"\u0627\u0644\u0645\u0634\u062a\u0631\u064a\u0627\u062a"}</span>
+<strong>{money(settlement.totals.purchases)}</strong>
+</div>
+
+<div className="setting-row">
+<span>{"\u0627\u0644\u0645\u0635\u0627\u0631\u064a\u0641"}</span>
+<strong>{money(settlement.totals.expenses)}</strong>
+</div>
+
+<div className="setting-row">
+<span>{"\u0627\u0644\u0631\u0628\u062d \u0627\u0644\u0635\u0627\u0641\u064a"}</span>
+<strong>{money(settlement.totals.netProfit)}</strong>
+</div>
+
+<div className="table-wrap">
+<table>
+<thead>
+<tr>
+<th>{"\u0627\u0644\u0627\u0633\u0645"}</th>
+<th>{"\u0645\u0628\u0644\u063a \u0627\u0644\u062f\u062e\u0648\u0644"}</th>
+<th>{"\u0627\u0644\u0646\u0633\u0628\u0629"}</th>
+<th>{"\u062d\u0635\u0629 \u0627\u0644\u0631\u0628\u062d"}</th>
+<th>{"\u0627\u0644\u0633\u062d\u0648\u0628\u0627\u062a"}</th>
+<th>{"\u0627\u0644\u0645\u0633\u062a\u062d\u0642 \u0627\u0644\u0646\u0647\u0627\u0626\u064a"}</th>
+</tr>
+</thead>
+
+<tbody>
+{settlement.partners.map((p:any)=>
+<tr key={p.role}>
+<td>{p.display_name}</td>
+<td>{money(p.capital)}</td>
+<td>{(Number(p.ratio)*100).toFixed(2)}%</td>
+<td>{money(p.profitShare)}</td>
+<td>{money(p.withdrawals)}</td>
+<td><strong>{money(p.settlement)}</strong></td>
+</tr>
+)}
+</tbody>
+</table>
+</div>
+
+<div className="muted" style={{marginTop:12}}>
+{"\u0627\u0644\u0631\u0628\u062d \u0627\u0644\u0635\u0627\u0641\u064a = \u0627\u0644\u0645\u0628\u064a\u0639\u0627\u062a \u2212 \u0627\u0644\u0645\u0634\u062a\u0631\u064a\u0627\u062a \u2212 \u0627\u0644\u0645\u0635\u0627\u0631\u064a\u0641\u060c \u062b\u0645 \u064a\u0648\u0632\u0639 \u062d\u0633\u0628 \u0646\u0633\u0628\u0629 \u0645\u0628\u0644\u063a \u0627\u0644\u062f\u062e\u0648\u0644\u060c \u0648\u0628\u0639\u062f\u0647\u0627 \u062a\u062e\u0635\u0645 \u0627\u0644\u0633\u062d\u0648\u0628\u0627\u062a."}
+</div>
+
+</section>
+}
+
+</>
+}
+function Settings({user,onPassword,onUserUpdated}:{user:User;onPassword:()=>void;onUserUpdated:(u:User)=>void}){const[form,setForm]=useState({username:user.username,displayName:user.displayName});const[saving,setSaving]=useState(false);const[error,setError]=useState("");useEffect(()=>setForm({username:user.username,displayName:user.displayName}),[user]);async function save(e:React.FormEvent){e.preventDefault();setSaving(true);setError("");const r=await window.almaktaba.updateProfile(form.username,form.displayName);setSaving(false);if(!r.ok)return setError(r.error);onUserUpdated(r.user);if(r.user.role!=="admin")localStorage.setItem(SAVED_USERNAME_KEY,r.user.username);alert("تم حفظ التعديلات")}return <><div className="page-heading"><h1>الإعدادات</h1></div><section className="settings-grid"><div className="card settings-account"><div className="card-head"><h2>بيانات الحساب</h2></div><form onSubmit={save} className="settings-form"><div><label>اسم المستخدم</label><input value={form.username} onChange={e=>setForm({...form,username:e.target.value})}/></div><div><label>الاسم الظاهر</label><input value={form.displayName} onChange={e=>setForm({...form,displayName:e.target.value})}/></div><button className="primary" disabled={saving}>{saving?"جاري الحفظ...":"حفظ التعديلات"}</button></form>{error&&<div className="error">{error}</div>}<div className="password-setting"><b>كلمة المرور</b><button onClick={onPassword}>تغيير كلمة المرور</button></div></div><div className="card"><h2>النظام</h2><div className="setting-row"><span>التطبيق</span><strong>المكتبة</strong></div><div className="setting-row"><span>الوضع</span><strong>بدون إنترنت</strong></div><div className="setting-row"><span>البيانات</span><strong>SQLite</strong></div></div></section></>}
 
 createRoot(document.getElementById("root")!).render(<App/>);

@@ -26,7 +26,7 @@ function backupDirectory() { return path.join(app.getPath("userData"), "backups"
 function automaticBackup(reason: string) { try { saveDb(); if (!dbPath || !fs.existsSync(dbPath)) return { ok: false, error: "قاعدة البيانات غير جاهزة" }; const dir = backupDirectory(); fs.mkdirSync(dir, { recursive: true }); const stamp = new Date().toISOString().replace(/[:.]/g, "-"); const filePath = path.join(dir, `almaktaba-${reason}-${stamp}.sqlite`); fs.copyFileSync(dbPath, filePath); return { ok: true, path: filePath }; } catch (error) { console.error("automatic backup failed", error); return { ok: false, error: error instanceof Error ? error.message : String(error) }; } }
 function restartBackupTimer() { if (backupTimer) { clearInterval(backupTimer); backupTimer = null; } const minutes = backupSettings.intervalMinutes; if (minutes <= 0) return; backupTimer = setInterval(() => { void automaticBackup("auto"); }, minutes * 60 * 1000); }
 
-async function initDb() { loadBackupSettings(); const SQL = await initSqlJs({ locateFile: (file: string) => path.join(app.getAppPath(), "node_modules", "sql.js", "dist", file) }); dbPath = path.join(app.getPath("userData"), "almaktaba.sqlite"); db = fs.existsSync(dbPath) ? new SQL.Database(fs.readFileSync(dbPath)) : new SQL.Database(); db.run(`CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT,username TEXT UNIQUE NOT NULL,display_name TEXT NOT NULL,role TEXT NOT NULL CHECK(role IN ('partner1','partner2','admin')),password_hash TEXT NOT NULL,active INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL); CREATE TABLE IF NOT EXISTS transactions(id INTEGER PRIMARY KEY AUTOINCREMENT,type TEXT NOT NULL,amount REAL NOT NULL CHECK(amount > 0),reason TEXT NOT NULL,beneficiary TEXT,notes TEXT,visibility TEXT NOT NULL DEFAULT 'shop' CHECK(visibility IN ('shop','admin_private')),created_by INTEGER NOT NULL,created_at TEXT NOT NULL,updated_at TEXT,status TEXT NOT NULL DEFAULT 'active',void_reason TEXT,voided_by INTEGER,voided_at TEXT,FOREIGN KEY(created_by) REFERENCES users(id),FOREIGN KEY(voided_by) REFERENCES users(id)); CREATE TABLE IF NOT EXISTS audit_logs(id INTEGER PRIMARY KEY AUTOINCREMENT,actor_id INTEGER NOT NULL,action TEXT NOT NULL,entity_type TEXT,entity_id INTEGER,details TEXT,created_at TEXT NOT NULL,FOREIGN KEY(actor_id) REFERENCES users(id)); CREATE TABLE IF NOT EXISTS products(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,sku TEXT,unit TEXT NOT NULL DEFAULT 'قطعة',purchase_price REAL NOT NULL DEFAULT 0 CHECK(purchase_price >= 0),sale_price REAL NOT NULL DEFAULT 0 CHECK(sale_price >= 0),quantity REAL NOT NULL DEFAULT 0 CHECK(quantity >= 0),min_quantity REAL NOT NULL DEFAULT 0 CHECK(min_quantity >= 0),active INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL,updated_at TEXT);`); const count = Number(query("SELECT COUNT(*) AS c FROM users")[0]?.c ?? 0); if (!count) { const now = new Date().toISOString(); for (const [username, displayName, role, password] of [["partner1","أحمد","partner1","1234"],["partner2","محمد","partner2","1234"],["admin","الحساب 3","admin","1234"]]) db.run("INSERT INTO users(username,display_name,role,password_hash,created_at) VALUES(?,?,?,?,?)", [username,displayName,role,hashPassword(String(password)),now]); saveDb(); } saveDb(); restartBackupTimer(); }
+async function initDb() { loadBackupSettings(); const SQL = await initSqlJs({ locateFile: (file: string) => path.join(app.getAppPath(), "node_modules", "sql.js", "dist", file) }); dbPath = path.join(app.getPath("userData"), "almaktaba.sqlite"); db = fs.existsSync(dbPath) ? new SQL.Database(fs.readFileSync(dbPath)) : new SQL.Database(); db.run(`CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT,username TEXT UNIQUE NOT NULL,display_name TEXT NOT NULL,role TEXT NOT NULL CHECK(role IN ('partner1','partner2','admin')),password_hash TEXT NOT NULL,active INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL); CREATE TABLE IF NOT EXISTS transactions(id INTEGER PRIMARY KEY AUTOINCREMENT,type TEXT NOT NULL,amount REAL NOT NULL CHECK(amount > 0),reason TEXT NOT NULL,beneficiary TEXT,notes TEXT,visibility TEXT NOT NULL DEFAULT 'shop' CHECK(visibility IN ('shop','admin_private')),created_by INTEGER NOT NULL,created_at TEXT NOT NULL,updated_at TEXT,status TEXT NOT NULL DEFAULT 'active',void_reason TEXT,voided_by INTEGER,voided_at TEXT,FOREIGN KEY(created_by) REFERENCES users(id),FOREIGN KEY(voided_by) REFERENCES users(id)); CREATE TABLE IF NOT EXISTS audit_logs(id INTEGER PRIMARY KEY AUTOINCREMENT,actor_id INTEGER NOT NULL,action TEXT NOT NULL,entity_type TEXT,entity_id INTEGER,details TEXT,created_at TEXT NOT NULL,FOREIGN KEY(actor_id) REFERENCES users(id)); CREATE TABLE IF NOT EXISTS products(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,sku TEXT,unit TEXT NOT NULL DEFAULT 'قطعة',purchase_price REAL NOT NULL DEFAULT 0 CHECK(purchase_price >= 0),sale_price REAL NOT NULL DEFAULT 0 CHECK(sale_price >= 0),quantity REAL NOT NULL DEFAULT 0 CHECK(quantity >= 0),min_quantity REAL NOT NULL DEFAULT 0 CHECK(min_quantity >= 0),active INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL,updated_at TEXT); CREATE TABLE IF NOT EXISTS partner_capital(partner_role TEXT PRIMARY KEY CHECK(partner_role IN ('partner1','partner2')),amount REAL NOT NULL DEFAULT 0 CHECK(amount >= 0),updated_at TEXT NOT NULL);`); const count = Number(query("SELECT COUNT(*) AS c FROM users")[0]?.c ?? 0); if (!count) { const now = new Date().toISOString(); for (const [username, displayName, role, password] of [["partner1","أحمد","partner1","1234"],["partner2","محمد","partner2","1234"],["admin","الحساب 3","admin","1234"]]) db.run("INSERT INTO users(username,display_name,role,password_hash,created_at) VALUES(?,?,?,?,?)", [username,displayName,role,hashPassword(String(password)),now]); saveDb(); } db.run("INSERT OR IGNORE INTO partner_capital(partner_role,amount,updated_at) VALUES('partner1',0,?)",[new Date().toISOString()]);db.run("INSERT OR IGNORE INTO partner_capital(partner_role,amount,updated_at) VALUES('partner2',0,?)",[new Date().toISOString()]);saveDb(); restartBackupTimer(); }
 
 function visibleTransactions() { if (!session) return []; if (session.role === "admin") return query(`SELECT t.*,u.display_name AS created_by_name FROM transactions t JOIN users u ON u.id=t.created_by WHERE t.visibility='shop' OR (t.visibility='admin_private' AND t.created_by=?) ORDER BY t.id DESC`, [session.id]); return query(`SELECT t.*,u.display_name AS created_by_name FROM transactions t JOIN users u ON u.id=t.created_by WHERE t.visibility='shop' AND u.role!='admin' ORDER BY t.id DESC`); }
 function visibleProducts() { if (!session) return []; return query("SELECT * FROM products WHERE active=1 ORDER BY id DESC"); }
@@ -49,6 +49,157 @@ ipcMain.handle("products:list",()=>visibleProducts());
 ipcMain.handle("products:create",(_event,input)=>{if(!session)return{ok:false,error:"غير مسجل الدخول"};const name=String(input?.name||"").trim();let sku=String(input?.sku||"").trim();const unit=String(input?.unit||"قطعة").trim()||"قطعة",purchase=Number(input?.purchasePrice),sale=Number(input?.salePrice),quantity=Number(input?.quantity),min=Number(input?.minQuantity);if(!name)return{ok:false,error:"اسم المنتج إجباري"};if([purchase,sale,quantity,min].some(v=>!Number.isFinite(v)||v<0))return{ok:false,error:"تحقق من الأسعار والكميات"};if(sku){const duplicate=query("SELECT id FROM products WHERE sku=? AND active=1",[sku])[0];if(duplicate)return{ok:false,error:"رمز المنتج مستخدم بالفعل"};}else sku=nextProductCode();const now=new Date().toISOString();db.run("INSERT INTO products(name,sku,unit,purchase_price,sale_price,quantity,min_quantity,created_at) VALUES(?,?,?,?,?,?,?,?)",[name,sku,unit,purchase,sale,quantity,min,now]);const id=Number(query("SELECT last_insert_rowid() AS id")[0].id);audit("create","product",id,JSON.stringify({name,sku,unit,purchase,sale,quantity,min}));saveDb();return{ok:true,id,sku};});
 ipcMain.handle("products:update",(_event,{id,input})=>{if(!session)return{ok:false,error:"غير مسجل الدخول"};const p=query("SELECT * FROM products WHERE id=? AND active=1",[id])[0];if(!p)return{ok:false,error:"المنتج غير موجود"};const name=String(input?.name||"").trim(),sku=String(input?.sku||"").trim(),unit=String(input?.unit||"قطعة").trim()||"قطعة",purchase=Number(input?.purchasePrice),sale=Number(input?.salePrice),quantity=Number(input?.quantity),min=Number(input?.minQuantity);if(!name)return{ok:false,error:"اسم المنتج إجباري"};if([purchase,sale,quantity,min].some(v=>!Number.isFinite(v)||v<0))return{ok:false,error:"تحقق من الأسعار والكميات"};const duplicate=sku?query("SELECT id FROM products WHERE sku=? AND id!=? AND active=1",[sku,id])[0]:null;if(duplicate)return{ok:false,error:"رمز المنتج مستخدم بالفعل"};const previous={name:p.name,sku:p.sku,unit:p.unit,purchasePrice:p.purchase_price,salePrice:p.sale_price,quantity:p.quantity,minQuantity:p.min_quantity};db.run("UPDATE products SET name=?,sku=?,unit=?,purchase_price=?,sale_price=?,quantity=?,min_quantity=?,updated_at=? WHERE id=?",[name,sku,unit,purchase,sale,quantity,min,new Date().toISOString(),id]);audit("update","product",id,JSON.stringify({previous,newValues:{name,sku,unit,purchasePrice:purchase,salePrice:sale,quantity,minQuantity:min}}));saveDb();return{ok:true};});
 ipcMain.handle("products:delete",(_event,id)=>{if(!session)return{ok:false,error:"غير مسجل الدخول"};const p=query("SELECT * FROM products WHERE id=? AND active=1",[id])[0];if(!p)return{ok:false,error:"المنتج غير موجود"};db.run("UPDATE products SET active=0,updated_at=? WHERE id=?",[new Date().toISOString(),id]);audit("delete","product",Number(id),JSON.stringify({name:p.name,sku:p.sku}));saveDb();return{ok:true};});
+
+
+ipcMain.handle("capital:get",()=>{
+  if(!session)return{ok:false,error:"??? ???? ??????"};
+  const rows=query("SELECT partner_role,amount,updated_at FROM partner_capital ORDER BY partner_role");
+  return{ok:true,capital:rows};
+});
+
+ipcMain.handle("capital:set",(_event,{partnerRole,amount})=>{
+  if(!session||session.role!=="admin")
+    return{ok:false,error:"????? ??? ????? ???? ?????? ??????? ???"};
+
+  const role=String(partnerRole);
+  const value=Number(amount);
+
+  if(role!=="partner1"&&role!=="partner2")
+    return{ok:false,error:"???????? ??? ????"};
+
+  if(!Number.isFinite(value)||value<0)
+    return{ok:false,error:"???? ??? ????? ??? ????"};
+
+  const previous=query(
+    "SELECT amount FROM partner_capital WHERE partner_role=?",
+    [role]
+  )[0];
+
+  db.run(
+    "INSERT INTO partner_capital(partner_role,amount,updated_at) VALUES(?,?,?) ON CONFLICT(partner_role) DO UPDATE SET amount=excluded.amount,updated_at=excluded.updated_at",
+    [role,value,new Date().toISOString()]
+  );
+
+  audit(
+    "update",
+    "partner_capital",
+    null,
+    JSON.stringify({
+      partnerRole:role,
+      previousAmount:Number(previous?.amount??0),
+      newAmount:value
+    })
+  );
+
+  saveDb();
+
+  return{ok:true,partnerRole:role,amount:value};
+});
+
+ipcMain.handle("capital:annual-settlement",(_event,{year})=>{
+  if(!session)
+    return{ok:false,error:"??? ???? ??????"};
+
+  const y=Number(year);
+
+  if(!Number.isInteger(y)||y<2000||y>2100)
+    return{ok:false,error:"????? ??? ?????"};
+
+  const from=`${y}-01-01T00:00:00.000Z`;
+  const to=`${y+1}-01-01T00:00:00.000Z`;
+
+  const totals=query(
+    `SELECT
+      COALESCE(SUM(CASE WHEN type='???' THEN amount ELSE 0 END),0) AS sales,
+      COALESCE(SUM(CASE WHEN type='????' THEN amount ELSE 0 END),0) AS purchases,
+      COALESCE(SUM(CASE WHEN type='?????' THEN amount ELSE 0 END),0) AS expenses,
+      COALESCE(SUM(CASE WHEN type='???' THEN amount ELSE 0 END),0) AS withdrawals
+    FROM transactions
+    WHERE status='active'
+      AND created_at>=?
+      AND created_at<?`,
+    [from,to]
+  )[0]||{};
+
+  const partners=query(
+    `SELECT
+      u.id,
+      u.display_name,
+      u.role,
+      COALESCE(pc.amount,0) AS capital,
+      COALESCE(
+        SUM(
+          CASE
+            WHEN t.type='???' AND t.status='active'
+            THEN t.amount
+            ELSE 0
+          END
+        ),0
+      ) AS withdrawals
+    FROM users u
+    LEFT JOIN partner_capital pc
+      ON pc.partner_role=u.role
+    LEFT JOIN transactions t
+      ON t.created_by=u.id
+      AND t.created_at>=?
+      AND t.created_at<?
+    WHERE u.role IN ('partner1','partner2')
+      AND u.active=1
+    GROUP BY
+      u.id,
+      u.display_name,
+      u.role,
+      pc.amount
+    ORDER BY CASE u.role
+      WHEN 'partner1' THEN 1
+      ELSE 2
+    END`,
+    [from,to]
+  );
+
+  const totalCapital=partners.reduce(
+    (sum,p)=>sum+Number(p.capital||0),
+    0
+  );
+
+  const netProfit=
+    Number(totals.sales||0)-
+    Number(totals.purchases||0)-
+    Number(totals.expenses||0);
+
+  const result=partners.map(p=>{
+    const capital=Number(p.capital||0);
+    const ratio=totalCapital>0
+      ?capital/totalCapital
+      :0;
+
+    const profitShare=netProfit*ratio;
+    const withdrawals=Number(p.withdrawals||0);
+
+    return{
+      ...p,
+      capital,
+      ratio,
+      profitShare,
+      withdrawals,
+      settlement:profitShare-withdrawals
+    };
+  });
+
+  return{
+    ok:true,
+    year:y,
+    totals:{
+      sales:Number(totals.sales||0),
+      purchases:Number(totals.purchases||0),
+      expenses:Number(totals.expenses||0),
+      withdrawals:Number(totals.withdrawals||0),
+      netProfit,
+      totalCapital
+    },
+    partners:result
+  };
+});
 
 ipcMain.handle("system:backup",()=>{if(!session||session.role!=="admin")return{ok:false,error:"هذه العملية متاحة للحساب الإداري فقط"};saveBackupSettings();return{ok:true,intervalMinutes:backupSettings.intervalMinutes};});
 ipcMain.handle("system:backup-now",()=>{if(!session||session.role!=="admin")return{ok:false,error:"هذه العملية متاحة للحساب الإداري فقط"};return automaticBackup("manual");});

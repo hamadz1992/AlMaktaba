@@ -26,6 +26,13 @@ contextBridge.exposeInMainWorld("almaktaba", {
   createProduct: (input: unknown) => ipcRenderer.invoke("products:create-safe", input),
   updateProduct: (id: number, input: unknown) => ipcRenderer.invoke("products:update", { id, input }),
   deleteProduct: (id: number) => ipcRenderer.invoke("products:delete", id),
+  getPartnerCapital: () => ipcRenderer.invoke("capital:get"),
+  setPartnerCapital: async (partnerRole: "partner1" | "partner2", amount: number) =>
+    (await isAdmin())
+      ? ipcRenderer.invoke("capital:set", { partnerRole, amount })
+      : { ok: false, error: "????? ??? ????? ???? ?????? ??????? ???" },
+  getAnnualSettlement: (year: number) =>
+    ipcRenderer.invoke("capital:annual-settlement", { year }),
   backup: async () => (await isAdmin()) ? ipcRenderer.invoke("system:backup") : { ok: false, error: "هذه العملية متاحة للحساب الإداري فقط" },
   backupNow: async () => (await isAdmin()) ? ipcRenderer.invoke("system:backup-now") : { ok: false, error: "هذه العملية متاحة للحساب الإداري فقط" },
   getBackupSettings: () => ipcRenderer.invoke("system:backup-settings"),

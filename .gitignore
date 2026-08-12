@@ -1,0 +1,9 @@
+﻿node_modules/
+dist/
+dist-electron/
+release/
+*.backup
+*.backup-*
+*.before-*
+main-current.txt
+preload-current.txt

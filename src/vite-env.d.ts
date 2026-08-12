@@ -1,4 +1,4 @@
-declare global {
+﻿declare global {
   interface Window {
     almaktaba: {
       login(username: string, password: string): Promise<any>;
@@ -17,6 +17,11 @@ declare global {
       createProduct(input: any): Promise<any>;
       updateProduct(id: number, input: any): Promise<any>;
       deleteProduct(id: number): Promise<any>;
+
+      getPartnerCapital(): Promise<any>;
+      setPartnerCapital(partnerRole: "partner1" | "partner2", amount: number): Promise<any>;
+      getAnnualSettlement(year: number): Promise<any>;
+
       backup(): Promise<any>;
       backupNow(): Promise<any>;
       getBackupSettings(): Promise<{ok:boolean;intervalMinutes:number;backupDir?:string;error?:string}>;
