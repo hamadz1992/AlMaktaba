@@ -7,3 +7,10 @@ release/
 *.before-*
 main-current.txt
 preload-current.txt
+
+# Local project copy and test/build files
+AlMaktaba/
+release-test/
+release-022/
+README.md
+package-lock.json
