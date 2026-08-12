@@ -1,6 +1,6 @@
 {
   "name": "almaktaba",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "description": "المكتبة - برنامج إدارة معاملات المحل Offline",
   "main": "dist-electron/electron/bootstrap.js",
