@@ -64,49 +64,34 @@ async function showAuditModal() {
   } catch (error) { window.alert(`تعذر فتح سجل التعديلات: ${error instanceof Error ? error.message : String(error)}`); }
 }
 
-async function createBackupPanel() {
-  if (!(await isAdmin())) { document.querySelector("[data-almaktaba-backup-panel]")?.remove(); return; }
-  if (document.querySelector("[data-almaktaba-backup-panel]")) return;
-  const content = document.querySelector<HTMLElement>(".content"); if (!content) return;
-  const panel = document.createElement("section"); panel.dataset.almaktabaBackupPanel = "true"; panel.dir = "rtl";
-  panel.style.cssText = "margin:0 0 12px;padding:14px 16px;border:1px solid #e8eaf0;border-radius:14px;background:#fff;box-shadow:0 6px 18px rgba(40,35,70,.05)";
-  panel.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px"><div><h2 style="margin:0 0 3px;font-size:18px">إدارة النسخ الاحتياطية</h2><div style="font-size:12px;color:#77808d">إنشاء نسخة الآن أو استعادة نسخة محفوظة بأمان</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" data-backup-now style="border:0;border-radius:9px;padding:8px 12px;background:#7c3aed;color:#fff;cursor:pointer">إنشاء نسخة الآن</button><button type="button" data-backup-restore style="border:0;border-radius:9px;padding:8px 12px;background:#eef0f5;color:#20242b;cursor:pointer">استعادة نسخة</button></div></div><div data-backup-status style="font-size:12px;color:#77808d;margin-bottom:8px"></div><div style="border:1px solid #edf0f4;border-radius:10px;overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:650px"><thead><tr style="background:#fafbfc"><th style="padding:8px;text-align:right">النسخة</th><th style="padding:8px;text-align:right">التاريخ</th><th style="padding:8px;text-align:right">الحجم</th><th style="padding:8px;text-align:right">إجراء</th></tr></thead><tbody data-backup-list></tbody></table></div>`;
-  content.prepend(panel);
-  const status = panel.querySelector<HTMLElement>("[data-backup-status]")!;
-  const list = panel.querySelector<HTMLElement>("[data-backup-list]")!;
-  const render = async () => {
-    const result = await ipcRenderer.invoke("backup:list");
-    if (!result?.ok) { status.textContent = result?.error || "تعذر قراءة النسخ الاحتياطية"; return; }
-    list.innerHTML = "";
-    const backups = Array.isArray(result.backups) ? result.backups : [];
-    if (!backups.length) { list.innerHTML = '<tr><td colspan="4" style="padding:20px;text-align:center;color:#77808d">لا توجد نسخ احتياطية محفوظة بعد.</td></tr>'; return; }
-    backups.forEach((backup: any) => {
-      const tr = document.createElement("tr");
-      const size = backup.size < 1024 * 1024 ? `${Math.max(1, Math.round(backup.size / 1024))} ك.ب` : `${(backup.size / 1024 / 1024).toFixed(1)} م.ب`;
-      const date = new Date(backup.modifiedAt).toLocaleString("ar-DZ");
-      tr.innerHTML = `<td style="padding:8px;border-top:1px solid #edf0f4">${backup.name}</td><td style="padding:8px;border-top:1px solid #edf0f4">${date}</td><td style="padding:8px;border-top:1px solid #edf0f4">${size}</td><td style="padding:8px;border-top:1px solid #edf0f4"><button type="button" data-restore-name="${String(backup.name).replace(/"/g,"&quot;")}" style="border:0;border-radius:8px;padding:6px 10px;background:#f1eafe;color:#673ab7;cursor:pointer">استعادة</button></td>`;
-      list.appendChild(tr);
-    });
-  };
-  panel.querySelector("[data-backup-now]")?.addEventListener("click", async () => { if (!(await isAdmin())) return; const r = await ipcRenderer.invoke("system:backup-now"); status.textContent = r?.ok ? "تم إنشاء النسخة الاحتياطية بنجاح." : (r?.error || "تعذر إنشاء النسخة الاحتياطية"); await render(); });
-  panel.querySelector("[data-backup-restore]")?.addEventListener("click", async () => { if (!(await isAdmin())) return; const ok = window.confirm("سيتم حفظ نسخة أمان من البيانات الحالية ثم استعادة النسخة المختارة وإعادة تشغيل البرنامج. هل تريد المتابعة؟"); if (!ok) return; const r = await ipcRenderer.invoke("backup:restore"); if (!r?.ok && !r?.canceled) window.alert(r?.error || "تعذر الاستعادة"); });
-  panel.addEventListener("click", async (event) => { const button = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-restore-name]"); if (!button || !(await isAdmin())) return; const name = button.dataset.restoreName || ""; if (!window.confirm(`سيتم استعادة النسخة:\n${name}\n\nسيتم أولًا إنشاء نسخة أمان من البيانات الحالية ثم إعادة تشغيل البرنامج. هل تريد المتابعة؟`)) return; const r = await ipcRenderer.invoke("backup:restore", name); if (!r?.ok && !r?.canceled) window.alert(r?.error || "تعذر الاستعادة"); });
-  void render();
+async function restoreBackupFromSettings() {
+  if (!(await isAdmin())) return;
+  const ok = window.confirm("سيتم إنشاء نسخة أمان من البيانات الحالية أولاً، ثم اختيار نسخة SQLite واستعادتها وإعادة تشغيل البرنامج. هل تريد المتابعة؟");
+  if (!ok) return;
+  const result = await ipcRenderer.invoke("backup:restore");
+  if (!result?.ok && !result?.canceled) window.alert(result?.error || "تعذر استعادة النسخة الاحتياطية");
 }
 
-function installBackupView() {
-  const install = async () => {
-    if (!(await isAdmin())) { document.querySelector("[data-almaktaba-backup-panel]")?.remove(); return; }
-    const nav = document.querySelector<HTMLElement>(".main-nav"); if (!nav) return;
-    nav.querySelectorAll("button").forEach(button => {
-      if (button.textContent?.includes("النسخ الاحتياطي") && !button.dataset.backupHooked) {
-        button.dataset.backupHooked = "true";
-        button.addEventListener("click", () => setTimeout(() => { void createBackupPanel(); }, 60));
-      }
-    });
-    if (document.querySelector(".content h1")?.textContent?.includes("النسخ الاحتياطي")) setTimeout(() => { void createBackupPanel(); }, 30);
-  };
-  const observer = new MutationObserver(() => { void install(); }); observer.observe(document.documentElement, { childList: true, subtree: true }); void install();
+async function ensureAdminRestoreButton() {
+  const session = await ipcRenderer.invoke("auth:session");
+  const existing = document.querySelector<HTMLElement>("[data-almaktaba-restore-row]");
+  if (!session || session.role !== "admin") { existing?.remove(); return; }
+  const headings = Array.from(document.querySelectorAll<HTMLElement>(".card h2"));
+  const systemHeading = headings.find(h => h.textContent?.trim() === "النظام");
+  const card = systemHeading?.closest<HTMLElement>(".card");
+  if (!card || card.querySelector("[data-almaktaba-restore-row]")) return;
+  const row = document.createElement("div");
+  row.dataset.almaktabaRestoreRow = "true";
+  row.className = "setting-row";
+  row.innerHTML = '<span>استعادة البيانات</span><button type="button" data-almaktaba-restore>استعادة نسخة احتياطية</button>';
+  row.querySelector("button")?.addEventListener("click", () => { void restoreBackupFromSettings(); });
+  card.appendChild(row);
+}
+
+function hideBackupNavigation() {
+  document.querySelectorAll<HTMLElement>(".main-nav button").forEach(button => {
+    if (button.textContent?.includes("النسخ الاحتياطي")) button.remove();
+  });
 }
 
 async function ensureAdminAuditButton() {
@@ -117,9 +102,10 @@ async function ensureAdminAuditButton() {
   const settings = Array.from(nav.querySelectorAll("button")).find((b) => b.textContent?.includes("الإعدادات")); if (settings) nav.insertBefore(button, settings); else nav.appendChild(button);
 }
 
-function installAdminAuditView() {
-  document.addEventListener("click", (event) => { const target = event.target as HTMLElement | null; const button = target?.closest<HTMLElement>("[data-audit-nav]"); if (button) { event.preventDefault(); event.stopPropagation(); void showAuditModal(); } }, true);
-  const observer = new MutationObserver(() => { void ensureAdminAuditButton(); }); observer.observe(document.documentElement, { childList: true, subtree: true }); void ensureAdminAuditButton();
+function installAdminTools() {
+  const run = () => { hideBackupNavigation(); void ensureAdminAuditButton(); void ensureAdminRestoreButton(); };
+  const observer = new MutationObserver(run); observer.observe(document.documentElement, { childList: true, subtree: true });
+  run();
 }
 
-if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => { installAdminAuditView(); installBackupView(); }, { once: true }); else { installAdminAuditView(); installBackupView(); }
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", installAdminTools, { once: true }); else installAdminTools();
